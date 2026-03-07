@@ -1,3 +1,7 @@
 fastapi
 uvicorn
 firecrawl-py
+python-dotenv
+google-genai
+pymongo
+httpx
