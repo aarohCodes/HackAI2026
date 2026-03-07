@@ -1,14 +1,36 @@
 import os
+from typing import Optional
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from tavily import AsyncTavilyClient
-
-from search.models import SearchRequest, WebResult, WebSearchResponse
 
 load_dotenv()
 
 router = APIRouter(prefix="/search", tags=["search"])
+
+
+class WebResult(BaseModel):
+    """A single web search result from Tavily."""
+
+    url: str
+    title: str
+    raw_content: Optional[str] = None
+
+
+class WebSearchResponse(BaseModel):
+    """Response for the /search endpoint containing web results."""
+
+    query: str
+    web_results: list[WebResult]
+
+
+class SearchRequest(BaseModel):
+    """Request body for search endpoints."""
+
+    query: str
+    user_id: str | None = None
 
 
 async def search_web(query: str) -> list[WebResult]:

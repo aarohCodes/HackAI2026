@@ -1,6 +1,6 @@
 """Integration tests for the search module.
 
-Run with: pytest tests/test_search.py -m integration
+Run with: python -m pytest tests/test_search.py -m integration -v -s
 """
 
 import pytest
@@ -10,10 +10,7 @@ from fastapi.testclient import TestClient
 from search.search import router as search_router, search_web
 from search.youtube import router as youtube_router, search_youtube
 
-
-# ---------------------------------------------------------------------------
 # Helpers
-# ---------------------------------------------------------------------------
 
 def _make_app() -> FastAPI:
     app = FastAPI()
@@ -21,10 +18,7 @@ def _make_app() -> FastAPI:
     app.include_router(youtube_router)
     return app
 
-
-# ---------------------------------------------------------------------------
 # Service-level tests (hit live APIs)
-# ---------------------------------------------------------------------------
 
 @pytest.mark.integration
 @pytest.mark.asyncio
@@ -33,9 +27,11 @@ async def test_search_web_returns_two_results():
     results = await search_web("python decorators")
 
     assert len(results) == 2
-    for r in results:
+    for i, r in enumerate(results, 1):
         assert isinstance(r.url, str) and r.url != ""
         assert isinstance(r.title, str) and r.title != ""
+        print(f"  Web {i}: {r.title}")
+        print(f"         {r.url}")
 
 
 @pytest.mark.integration
@@ -47,11 +43,11 @@ async def test_search_youtube_returns_result():
     assert isinstance(result.video_id, str) and result.video_id != ""
     assert result.video_url.startswith("https://youtube.com/watch?v=")
     assert result.channel_name != ""
+    print(f"  YouTube: {result.title}")
+    print(f"           {result.video_url}")
 
 
-# ---------------------------------------------------------------------------
 # Endpoint tests
-# ---------------------------------------------------------------------------
 
 @pytest.mark.integration
 def test_search_endpoint():
@@ -69,6 +65,9 @@ def test_search_endpoint():
     assert data["query"] == "machine learning basics"
     assert isinstance(data["web_results"], list)
     assert len(data["web_results"]) == 2
+    for i, r in enumerate(data["web_results"], 1):
+        print(f"  Web {i}: {r['title']}")
+        print(f"         {r['url']}")
 
 
 @pytest.mark.integration
@@ -86,5 +85,8 @@ def test_youtube_endpoint():
     data = response.json()
     assert data["query"] == "machine learning basics"
     assert "youtube_result" in data
-    assert data["youtube_result"]["video_id"] != ""
-    assert data["youtube_result"]["video_url"].startswith("https://youtube.com/watch?v=")
+    yt = data["youtube_result"]
+    assert yt["video_id"] != ""
+    assert yt["video_url"].startswith("https://youtube.com/watch?v=")
+    print(f"  YouTube: {yt['title']}")
+    print(f"           {yt['video_url']}")

@@ -3,12 +3,36 @@ import os
 from dotenv import load_dotenv
 from fastapi import APIRouter, HTTPException
 from googleapiclient.discovery import build
-
-from search.models import SearchRequest, YouTubeResult, YouTubeSearchResponse
+from pydantic import BaseModel
 
 load_dotenv()
 
 router = APIRouter(prefix="/search", tags=["youtube"])
+
+
+class YouTubeResult(BaseModel):
+    """A single YouTube video result."""
+
+    video_id: str
+    title: str
+    description: str
+    thumbnail_url: str
+    video_url: str
+    channel_name: str
+
+
+class YouTubeSearchResponse(BaseModel):
+    """Response for the /youtube endpoint containing a YouTube result."""
+
+    query: str
+    youtube_result: YouTubeResult
+
+
+class SearchRequest(BaseModel):
+    """Request body for search endpoints."""
+
+    query: str
+    user_id: str | None = None
 
 
 async def search_youtube(query: str) -> YouTubeResult:
