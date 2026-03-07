@@ -1,6 +1,6 @@
 import os
 import sys
-import httpx
+import json
 from dotenv import load_dotenv
 from google import genai
 from pymongo import MongoClient
@@ -8,7 +8,6 @@ from datetime import datetime, timezone
 
 load_dotenv()
 
-FIRECRAWL_SERVER_URL = os.getenv("FIRECRAWL_SERVER_URL", "http://localhost:8000")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 MONGODB_URI = os.getenv("MONGODB_URI")
 MONGODB_DB = os.getenv("MONGODB_DB", "hackai2026")
@@ -29,17 +28,8 @@ def embed_text(text: str) -> list[float]:
     return result.embeddings[0].values
 
 
-def index_url(url: str) -> dict:
-    """Scrape a URL via the firecrawl server, embed each chunk, and store in MongoDB."""
-    with httpx.Client() as http:
-        response = http.post(
-            f"{FIRECRAWL_SERVER_URL}/firecrawl",
-            json={"url": url},
-            timeout=60.0,
-        )
-        response.raise_for_status()
-        data = response.json()
-
+def index_scraped_data(data: dict) -> dict:
+    """Embed each chunk from pre-scraped firecrawl output and store in MongoDB."""
     page_url = data["url"]
     title = data["title"]
     chunks: list[str] = data["chunks"]
@@ -70,11 +60,13 @@ def index_url(url: str) -> dict:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python indexing.py <url>")
-        sys.exit(1)
+    # Reads JSON from a file path argument or stdin (piped from firecrawl_server output)
+    if len(sys.argv) >= 2:
+        with open(sys.argv[1]) as f:
+            data = json.load(f)
+    else:
+        data = json.load(sys.stdin)
 
-    target_url = sys.argv[1]
-    print(f"Indexing: {target_url}")
-    result = index_url(target_url)
+    print(f"Indexing: {data['url']}")
+    result = index_scraped_data(data)
     print(f"Stored {result['chunks_indexed']} chunks for \"{result['title']}\"")
