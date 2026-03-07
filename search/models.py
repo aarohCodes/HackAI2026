@@ -22,16 +22,22 @@ class YouTubeResult(BaseModel):
     channel_name: str
 
 
-class SearchResponse(BaseModel):
-    """Combined response containing web and YouTube search results."""
+class WebSearchResponse(BaseModel):
+    """Response for the /search endpoint containing web results."""
 
     query: str
     web_results: list[WebResult]
-    youtube_result: YouTubeResult | None = None
+
+
+class YouTubeSearchResponse(BaseModel):
+    """Response for the /youtube endpoint containing a YouTube result."""
+
+    query: str
+    youtube_result: YouTubeResult
 
 
 class SearchRequest(BaseModel):
-    """Request body for the /search/retrieve endpoint."""
+    """Request body for search endpoints."""
 
     query: str
     user_id: str | None = None

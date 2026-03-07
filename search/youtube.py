@@ -1,51 +1,14 @@
 import os
 
 from dotenv import load_dotenv
-from tavily import AsyncTavilyClient
+from fastapi import APIRouter, HTTPException
 from googleapiclient.discovery import build
 
-from search.models import WebResult, YouTubeResult
+from search.models import SearchRequest, YouTubeResult, YouTubeSearchResponse
 
 load_dotenv()
 
-
-async def search_web(query: str) -> list[WebResult]:
-    """Search the web using the Tavily API and return the top 2 results.
-
-    Args:
-        query: The search query string.
-
-    Returns:
-        A list of the top 2 WebResult objects.
-
-    Raises:
-        RuntimeError: If the Tavily API call fails.
-    """
-    api_key = os.environ.get("TAVILY_API_KEY")
-    if not api_key:
-        raise RuntimeError("TAVILY_API_KEY environment variable is not set")
-
-    try:
-        client = AsyncTavilyClient(api_key=api_key)
-        response = await client.search(
-            query=query,
-            search_depth="advanced",
-            max_results=2,
-            include_raw_content=True,
-        )
-    except Exception as exc:
-        raise RuntimeError(f"Tavily API error: {exc}") from exc
-
-    results: list[WebResult] = []
-    for item in response.get("results", [])[:2]:
-        results.append(
-            WebResult(
-                url=item.get("url", ""),
-                title=item.get("title", ""),
-                raw_content=item.get("raw_content"),
-            )
-        )
-    return results
+router = APIRouter(prefix="/search", tags=["youtube"])
 
 
 async def search_youtube(query: str) -> YouTubeResult:
@@ -98,4 +61,25 @@ async def search_youtube(query: str) -> YouTubeResult:
         thumbnail_url=snippet.get("thumbnails", {}).get("high", {}).get("url", ""),
         video_url=f"https://youtube.com/watch?v={video_id}",
         channel_name=snippet.get("channelTitle", ""),
+    )
+
+
+@router.post("/youtube", response_model=YouTubeSearchResponse)
+async def youtube(request: SearchRequest) -> YouTubeSearchResponse:
+    """Search YouTube for the most relevant educational video.
+
+    Args:
+        request: Contains the search query and an optional user_id.
+
+    Returns:
+        A YouTubeSearchResponse with a single video result.
+    """
+    try:
+        youtube_result = await search_youtube(request.query)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return YouTubeSearchResponse(
+        query=request.query,
+        youtube_result=youtube_result,
     )
