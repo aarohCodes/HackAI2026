@@ -34,7 +34,7 @@ export function Landing() {
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cogni-accent to-cogni-teal flex items-center justify-center">
             <Brain size={20} className="text-white" />
           </div>
-          <span className="font-display font-bold text-xl tracking-tight">CogniPath</span>
+          <span className="font-display font-bold text-xl tracking-tight">Cortex</span>
         </div>
         <div className="flex items-center gap-8">
           <a href="#features" className="text-sm text-white/60 hover:text-white transition-colors">Features</a>
@@ -59,7 +59,7 @@ export function Landing() {
         <motion.h1 {...fadeUp(0.2)} className="font-display font-extrabold text-6xl md:text-7xl leading-[1.05] mt-8 max-w-3xl mx-auto">
           Master Any Skill with{' '}
           <span className="bg-gradient-to-r from-cogni-accent via-cogni-accent-light to-cogni-teal bg-clip-text text-transparent">
-            CogniPath
+            Cortex
           </span>
         </motion.h1>
 
@@ -112,7 +112,7 @@ export function Landing() {
             The Future of Learning
           </h2>
           <p className="text-white/50 mt-4 max-w-lg text-lg">
-            CogniPath utilizes cutting-edge methodology to accelerate your mastery of
+            Cortex utilizes cutting-edge methodology to accelerate your mastery of
             complex subjects through bio-adaptive algorithms.
           </p>
         </motion.div>
@@ -171,7 +171,7 @@ export function Landing() {
             Ready to begin your journey?
           </h2>
           <p className="text-white/50 mt-4 text-lg">
-            Join over 500,000 learners mastering the future of technology and human expertise.
+            Start mastering the future of technology with AI-powered adaptive learning.
           </p>
           <div className="flex items-center justify-center gap-4 mt-8">
             <button
@@ -197,7 +197,7 @@ export function Landing() {
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cogni-accent to-cogni-teal flex items-center justify-center">
               <Brain size={14} className="text-white" />
             </div>
-            <span className="font-display font-bold text-sm">CogniPath</span>
+            <span className="font-display font-bold text-sm">Cortex</span>
           </div>
           <div className="flex items-center gap-6 text-xs text-white/30">
             <span>Privacy Policy</span>
@@ -211,7 +211,7 @@ export function Landing() {
           </div>
         </div>
         <p className="text-center text-[11px] text-white/20 mt-6">
-          &copy; 2026 CogniPath AI. All rights reserved. Powered by Neural Pathway algorithms.
+          &copy; 2026 Cortex AI. All rights reserved. Powered by Neural Pathway algorithms.
         </p>
       </footer>
     </div>

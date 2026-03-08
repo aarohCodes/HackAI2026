@@ -9,7 +9,11 @@ from services.gemini_service import (
     grade_open_answer,
 )
 from services.gamification_service import award_xp
-from api.deps import get_current_user
+from deps import get_current_user
+from db import past_learning_col
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -134,6 +138,28 @@ async def quiz_complete(req: QuizCompleteRequest, current_user: User = Depends(g
                 elif node.mastery_score >= 0.5 and node.state == NodeState.RED:
                     node.state = NodeState.YELLOW
                 await node.save()
+
+    if req.concepts_tested:
+        for concept_name in req.concepts_tested:
+            try:
+                node = await ConceptNode.find_one(
+                    ConceptNode.user_id == current_user.id,
+                    ConceptNode.concept == concept_name,
+                )
+                past_learning_col.update_one(
+                    {"user_id": str(current_user.id), "topic": concept_name},
+                    {"$set": {
+                        "user_id": str(current_user.id),
+                        "topic": concept_name,
+                        "domain": node.domain if node else "general",
+                        "progress": int((node.mastery_score if node else 0) * 100),
+                        "score": score_pct,
+                        "state": node.state.value if node else "red",
+                    }},
+                    upsert=True,
+                )
+            except Exception:
+                logger.warning("Failed to upsert past_learning for %s", concept_name)
 
     return {
         "score_pct": score_pct,

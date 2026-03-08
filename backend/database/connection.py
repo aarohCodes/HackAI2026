@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_DB_URI", "mongodb://localhost:27017")
-MONGO_DB = os.getenv("MONGO_DB_NAME", "cognipath")
+MONGO_DB = os.getenv("MONGO_DB_NAME", "cortex")
 
 client: AsyncIOMotorClient = None
 

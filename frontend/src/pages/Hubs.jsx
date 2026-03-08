@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Sidebar } from '../components/ui/Sidebar'
 import { useStore } from '../store/useStore'
 import { useGamification } from '../hooks/useGamification'
@@ -20,6 +20,7 @@ const HUB_ICONS = {
 
 export function HubsPage() {
   const navigate = useNavigate()
+  const { topic: topicParam } = useParams()
   const { user, sidebarOpen, gamification, fetchGraph } = useStore()
   const [nodes, setNodes] = useState([])
   const [view, setView] = useState('network')
@@ -95,9 +96,22 @@ export function HubsPage() {
     ? Math.round((nodes.reduce((sum, n) => sum + (n.retention_rt || 0), 0) / nodes.length) * 100)
     : 0
 
-  const filteredHubs = search
-    ? hubs.filter((h) => h.domain.toLowerCase().includes(search.toLowerCase()))
-    : hubs
+  const topicDomain = topicParam
+    ? decodeURIComponent(topicParam).toLowerCase().replace(/\s+/g, '_')
+    : null
+
+  const filteredHubs = useMemo(() => {
+    let result = hubs
+    if (topicDomain) {
+      result = result.filter((h) =>
+        h.domain.toLowerCase().includes(topicDomain) || topicDomain.includes(h.domain.toLowerCase())
+      )
+    }
+    if (search) {
+      result = result.filter((h) => h.domain.toLowerCase().includes(search.toLowerCase()))
+    }
+    return result
+  }, [hubs, topicDomain, search])
 
   const formatLabel = (domain) =>
     domain.replace(/_/g, ' ').split(' ').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
@@ -262,8 +276,7 @@ export function HubsPage() {
                         setDragHub(hub.domain)
                       }}
                       onClick={(e) => {
-                        // Only navigate if not dragging
-                        if (!dragHub) navigate('/canvas')
+                        if (!dragHub) navigate(`/hubs/${encodeURIComponent(hub.domain)}`)
                       }}
                     >
                       {isCore && (
@@ -365,7 +378,7 @@ export function HubsPage() {
                     initial={{ y: 15, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ delay: i * 0.06 }}
-                    onClick={() => navigate('/canvas')}
+                    onClick={() => navigate(`/hubs/${encodeURIComponent(hub.domain)}`)}
                     className="p-5 rounded-2xl bg-[#0B1628] border border-[#1A2744] hover:border-cogni-accent/30 cursor-pointer flex items-center justify-between transition-all"
                   >
                     <div className="flex items-center gap-4">
@@ -406,21 +419,10 @@ export function HubsPage() {
 
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-[#0B1628] border border-[#1A2744]">
-              <div className="flex -space-x-2">
-                {['#8B5CF6', '#06B6D4', '#10B981', '#F59E0B'].map((c, i) => (
-                  <div
-                    key={i}
-                    className="w-7 h-7 rounded-full border-2 border-[#060B18] flex items-center justify-center text-[9px] font-bold"
-                    style={{ background: c + '30', color: c, zIndex: 4 - i }}
-                  />
-                ))}
-                <div className="w-7 h-7 rounded-full border-2 border-[#060B18] bg-[#1A2744] flex items-center justify-center text-[9px] font-bold text-[#3D5A80]" style={{ zIndex: 0 }}>
-                  12
-                </div>
-              </div>
+              <Brain size={16} className="text-cogni-accent" />
               <div>
-                <p className="text-xs font-semibold text-white">Collaborative Mode</p>
-                <p className="text-[10px] text-[#3D5A80]">15 peers online</p>
+                <p className="text-xs font-semibold text-white">{hubs.length} Knowledge Hubs</p>
+                <p className="text-[10px] text-[#3D5A80]">Powered by Gemini</p>
               </div>
             </div>
           </div>

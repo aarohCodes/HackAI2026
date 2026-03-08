@@ -2,7 +2,7 @@ import { useStore } from '../../store/useStore'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  LayoutDashboard, Map, BarChart3, Award, CheckSquare, Brain,
+  LayoutDashboard, Map, Award, CheckSquare, Brain,
   ChevronLeft, ChevronRight, Flame, LogOut, Settings,
 } from 'lucide-react'
 import { DailyGoalRing } from '../gamification/DailyGoalRing'
@@ -11,7 +11,6 @@ const NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { key: 'hubs', label: 'Hubs', icon: Map, path: '/hubs' },
   { key: 'assess', label: 'Tasks', icon: CheckSquare, path: '/assess' },
-  { key: 'metrics', label: 'Insights', icon: BarChart3, path: '/metrics' },
 ]
 
 export function Sidebar() {
@@ -42,7 +41,7 @@ export function Sidebar() {
             className="cursor-pointer"
             onClick={() => navigate('/dashboard')}
           >
-            <span className="font-display font-bold text-lg tracking-tight">CogniPath</span>
+            <span className="font-display font-bold text-lg tracking-tight">Cortex</span>
             <p className="text-[9px] font-bold uppercase tracking-wider text-cogni-teal -mt-0.5">Global Hub</p>
           </motion.div>
         )}

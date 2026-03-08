@@ -6,8 +6,8 @@ import { useStore } from '../store/useStore'
 import { useGamification } from '../hooks/useGamification'
 import { api } from '../api/client'
 import {
-  Sparkles, AlertTriangle, ChevronRight, Edit3,
-  Brain, TrendingUp, Flame, Clock, Search, Plus, ArrowRight, Loader,
+  AlertTriangle, ChevronRight, Edit3,
+  Brain, Flame, Clock, Search, Plus, ArrowRight, Loader, Link,
 } from 'lucide-react'
 
 const STATE_COLORS = {
@@ -18,24 +18,13 @@ const STATE_COLORS = {
   glow: '#8B5CF6',
 }
 
-const CONCEPT_ICONS = {
-  machine_learning: Brain,
-  data_science: TrendingUp,
-  default: Sparkles,
-}
-
-const QUICK_TOPICS = [
-  { label: 'Machine Learning', icon: Brain, color: '#8B5CF6' },
-  { label: 'Data Science', icon: TrendingUp, color: '#06B6D4' },
-  { label: 'Web Development', icon: Sparkles, color: '#2DD4BF' },
-  { label: 'Deep Learning', icon: Brain, color: '#F59E0B' },
-]
-
 export function DashboardPage() {
   const navigate = useNavigate()
-  const { user, sidebarOpen, gamification, fetchGraph, invalidateGraph } = useStore()
+  const { user, sidebarOpen, gamification, fetchGraph, invalidateGraph, setUser } = useStore()
   const [nodes, setNodes] = useState([])
   const [loading, setLoading] = useState(true)
+  const [topics, setTopics] = useState([])
+  const [topicsLoading, setTopicsLoading] = useState(true)
   const [topicInput, setTopicInput] = useState('')
   const [addingTopic, setAddingTopic] = useState(false)
   const [topicSuccess, setTopicSuccess] = useState(null)
@@ -50,6 +39,26 @@ export function DashboardPage() {
     }).catch(() => setLoading(false))
   }, [user])
 
+  useEffect(() => {
+    if (!user) {
+      setTopicsLoading(false)
+      return
+    }
+    const loadTopics = async () => {
+      try {
+        const res = await api.get('/users/me')
+        const userTopics = res.data?.topics ?? []
+        setTopics(userTopics)
+        setUser({ ...user, topics: userTopics })
+      } catch {
+        setTopics(user?.topics ?? [])
+      } finally {
+        setTopicsLoading(false)
+      }
+    }
+    loadTopics()
+  }, [user?.id])
+
   const handleAddTopic = async (topic) => {
     const t = topic || topicInput.trim()
     if (!t || addingTopic) return
@@ -59,13 +68,14 @@ export function DashboardPage() {
       const res = await api.post('/graph/add-topic', { topic: t })
       setTopicSuccess(`Added ${res.data.nodes_created} concepts for "${t}"`)
       setTopicInput('')
-      // Refresh graph cache
+      setTopics((prev) => (prev.includes(t) ? prev : [...prev, t]))
       invalidateGraph()
       const { nodes: refreshed } = await fetchGraph(true)
       setNodes(refreshed)
     } catch (err) {
       console.error('Failed to add topic:', err)
-      setTopicSuccess('Failed to add topic. Please try again.')
+      const msg = err.response?.data?.detail || err.message || 'Failed to add topic. Please try again.'
+      setTopicSuccess(Array.isArray(msg) ? msg.join(' ') : msg)
     }
     setAddingTopic(false)
     setTimeout(() => setTopicSuccess(null), 4000)
@@ -166,19 +176,34 @@ export function DashboardPage() {
               </button>
             </div>
 
-            {/* Quick topic pills */}
+            {/* Quick Add — user's topics as clickable cards */}
             <div className="flex flex-wrap gap-2">
-              {QUICK_TOPICS.map(({ label, icon: Icon, color }) => (
-                <button
-                  key={label}
-                  onClick={() => handleAddTopic(label)}
-                  disabled={addingTopic}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06] transition-all disabled:opacity-30"
-                >
-                  <Icon size={14} style={{ color }} />
-                  <span className="text-sm text-white/60">{label}</span>
-                </button>
-              ))}
+              {topicsLoading ? (
+                <div className="flex items-center gap-2 text-sm text-white/40">
+                  <Loader size={14} className="animate-spin" /> Loading topics...
+                </div>
+              ) : topics.length === 0 ? (
+                <div className="flex items-center gap-2 text-sm text-white/40">
+                  <span>Add topics to get started.</span>
+                  <button
+                    onClick={() => navigate('/onboarding')}
+                    className="inline-flex items-center gap-1 text-cogni-accent hover:text-cogni-teal transition-colors"
+                  >
+                    <Link size={14} /> Go to onboarding
+                  </button>
+                </div>
+              ) : (
+                topics.map((topic) => (
+                  <button
+                    key={topic}
+                    onClick={() => navigate(`/hubs/${encodeURIComponent(topic)}`)}
+                    className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06] transition-all"
+                  >
+                    <Brain size={14} className="text-cogni-accent" />
+                    <span className="text-sm text-white/60">{topic}</span>
+                  </button>
+                ))
+              )}
             </div>
 
             {/* Success/error message */}
@@ -252,7 +277,6 @@ export function DashboardPage() {
               <div className="grid grid-cols-3 gap-4">
                 {topConcepts.map((node, i) => {
                   const color = STATE_COLORS[node.state] || '#8B5CF6'
-                  const Icon = CONCEPT_ICONS[node.domain] || CONCEPT_ICONS.default
                   return (
                     <motion.div
                       key={node.id}
@@ -268,7 +292,7 @@ export function DashboardPage() {
                             className="w-10 h-10 rounded-xl flex items-center justify-center"
                             style={{ background: `${color}15` }}
                           >
-                            <Icon size={20} style={{ color }} />
+                            <Brain size={20} style={{ color }} />
                           </div>
                           <div>
                             <p className="font-semibold text-sm">{node.concept}</p>
@@ -336,7 +360,7 @@ export function DashboardPage() {
                           <p className="font-semibold text-sm">{node.concept}</p>
                           <p className="text-[10px] text-white/30 mt-0.5 flex items-center gap-1">
                             <Clock size={9} />
-                            {node.state === 'fading' ? 'Decaying — review soon' : 'Needs review'}
+                            {node.state === 'fading' ? 'Review soon' : 'Needs review'}
                           </p>
                         </div>
                       </div>
@@ -350,21 +374,6 @@ export function DashboardPage() {
             </motion.div>
           )}
 
-          {/* Bottom action */}
-          <motion.div
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            className="text-center"
-          >
-            <button
-              onClick={() => navigate('/metrics')}
-              className="cogni-btn-secondary inline-flex items-center gap-2"
-            >
-              <TrendingUp size={16} className="text-cogni-accent" />
-              Adjust Model
-            </button>
-          </motion.div>
         </div>
       </div>
     </div>

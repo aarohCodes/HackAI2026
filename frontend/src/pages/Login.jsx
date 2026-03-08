@@ -74,7 +74,7 @@ export function Login() {
             <Sparkles size={32} className="text-white" />
           </div>
           <h1 className="text-3xl font-black">
-            <span className="cogni-gradient-text">CogniPath</span>
+            <span className="cogni-gradient-text">Cortex</span>
           </h1>
           <p className="text-white/40 mt-2">
             {isRegister ? 'Create your learning account' : 'Welcome back, learner'}

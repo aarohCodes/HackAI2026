@@ -10,36 +10,50 @@ import {
   ChevronRight, Award, Clock, CheckCircle, Brain
 } from 'lucide-react'
 
+function formatDomain(d) {
+  return (d || '').replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 export function AssessmentPage() {
   const navigate = useNavigate()
   const { user, sidebarOpen, gamification, graphNodes, fetchGraph } = useStore()
+  const [nodes, setNodes] = useState([])
   const [focalPoints, setFocalPoints] = useState([])
   const [readinessScore, setReadinessScore] = useState(0)
+  const [domains, setDomains] = useState([])
+  const [selectedDomain, setSelectedDomain] = useState(null)
+  const [quizHub, setQuizHub] = useState(null)
+  const [quizSubTopic, setQuizSubTopic] = useState(null)
+  const [quizCustomTopic, setQuizCustomTopic] = useState('')
 
   useGamification()
 
   useEffect(() => {
     const load = async () => {
-      const { nodes } = await fetchGraph()
-      if (!nodes.length) return
+      const { nodes: n } = await fetchGraph()
+      if (!n.length) return
+      setNodes(n)
 
-      const green = nodes.filter((n) => n.state === 'green').length
-      const total = nodes.length
+      const green = n.filter((node) => node.state === 'green').length
+      const total = n.length
       setReadinessScore(total > 0 ? Math.round((green / total) * 100) : 0)
 
-      const weak = nodes
-        .filter((n) => ['fading', 'yellow', 'red'].includes(n.state))
+      const uniqueDomains = [...new Set(n.map((node) => node.domain).filter(Boolean))]
+      setDomains(uniqueDomains)
+
+      const weak = n
+        .filter((node) => ['fading', 'yellow', 'red'].includes(node.state))
         .sort((a, b) => (a.retention_rt || 0) - (b.retention_rt || 0))
         .slice(0, 3)
 
       const tags = ['HIGH IMPACT', 'FAST TRACK', 'MASTERY CLOSE']
       const colors = ['#8B5CF6', '#06B6D4', '#2DD4BF']
       setFocalPoints(
-        weak.map((n, i) => ({
+        weak.map((node, i) => ({
           tag: tags[i] || 'FOCUS',
-          label: n.concept,
+          label: node.concept,
           color: colors[i] || '#8B5CF6',
-          mastery: n.mastery_score || 0,
+          mastery: node.mastery_score || 0,
         }))
       )
     }
@@ -122,6 +136,36 @@ export function AssessmentPage() {
             </div>
           </div>
 
+          {/* Topic selector for Scenario / general */}
+          {domains.length > 0 && (
+            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.05 }} className="mb-6">
+              <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/30 mb-3">
+                Focus for Scenario (optional)
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setSelectedDomain(null)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                    !selectedDomain ? 'border-cogni-accent/50 bg-cogni-accent/15 text-cogni-accent' : 'border-white/10 bg-white/[0.03] text-white/50 hover:border-white/20'
+                  }`}
+                >
+                  All Topics
+                </button>
+                {domains.map((d) => (
+                  <button
+                    key={d}
+                    onClick={() => setSelectedDomain(d)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                      selectedDomain === d ? 'border-cogni-accent/50 bg-cogni-accent/15 text-cogni-accent' : 'border-white/10 bg-white/[0.03] text-white/50 hover:border-white/20'
+                    }`}
+                  >
+                    {formatDomain(d)}
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
           {/* Assessment mode cards */}
           <div className="grid grid-cols-3 gap-4 mb-8">
             {assessmentModes.map((mode, i) => (
@@ -142,13 +186,89 @@ export function AssessmentPage() {
                 <div className="flex items-center gap-1.5 text-[10px] text-white/25 mb-3">
                   <Sparkles size={10} /> Powered by Gemini
                 </div>
-                <button
-                  onClick={() => navigate(mode.path)}
-                  className="flex items-center gap-2 text-sm font-bold transition-colors cursor-pointer"
-                  style={{ color: mode.color }}
-                >
-                  {mode.action} <ChevronRight size={14} />
-                </button>
+                {mode.path === '/assess/quiz' ? (
+                  <div className="space-y-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-white/40">Quiz topic</p>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      <button
+                        type="button"
+                        onClick={() => { setQuizHub(null); setQuizSubTopic(null); }}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                          !quizHub ? 'border-cogni-accent/50 bg-cogni-accent/15 text-cogni-accent' : 'border-white/10 text-white/50'
+                        }`}
+                      >
+                        All
+                      </button>
+                      {domains.map((d) => (
+                        <button
+                          key={d}
+                          type="button"
+                          onClick={() => { setQuizHub(d); setQuizSubTopic(null); }}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                            quizHub === d ? 'border-cogni-accent/50 bg-cogni-accent/15 text-cogni-accent' : 'border-white/10 text-white/50'
+                          }`}
+                        >
+                          {formatDomain(d)}
+                        </button>
+                      ))}
+                    </div>
+                    {quizHub && (
+                      <div className="flex flex-wrap gap-1.5 mb-2">
+                        <button
+                          type="button"
+                          onClick={() => setQuizSubTopic('__all_hub__')}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-medium border ${
+                            quizSubTopic === '__all_hub__' ? 'border-cogni-teal/50 bg-cogni-teal/15 text-cogni-teal' : 'border-white/10 text-white/50'
+                          }`}
+                        >
+                          Full hub
+                        </button>
+                        {nodes.filter((n) => n.domain === quizHub).map((n) => (
+                          <button
+                            key={n.id}
+                            type="button"
+                            onClick={() => setQuizSubTopic(n.concept)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-medium border truncate max-w-[140px] ${
+                              quizSubTopic === n.concept ? 'border-cogni-teal/50 bg-cogni-teal/15 text-cogni-teal' : 'border-white/10 text-white/50'
+                            }`}
+                          >
+                            {n.concept}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex gap-2 items-center">
+                      <input
+                        type="text"
+                        value={quizCustomTopic}
+                        onChange={(e) => setQuizCustomTopic(e.target.value)}
+                        placeholder="Or type custom topic..."
+                        className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-xs text-white placeholder-white/30 outline-none focus:border-cogni-accent/40"
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        const topic = quizCustomTopic.trim() || (quizSubTopic === '__all_hub__' ? formatDomain(quizHub) : quizSubTopic) || (quizHub ? formatDomain(quizHub) : null)
+                        navigate(topic ? `/assess/quiz?topic=${encodeURIComponent(topic)}` : '/assess/quiz')
+                      }}
+                      className="flex items-center gap-2 text-sm font-bold transition-colors cursor-pointer mt-2"
+                      style={{ color: mode.color }}
+                    >
+                      {mode.action} <ChevronRight size={14} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      const params = selectedDomain ? `?topic=${encodeURIComponent(formatDomain(selectedDomain))}` : ''
+                      navigate(mode.path + params)
+                    }}
+                    className="flex items-center gap-2 text-sm font-bold transition-colors cursor-pointer"
+                    style={{ color: mode.color }}
+                  >
+                    {mode.action} <ChevronRight size={14} />
+                  </button>
+                )}
               </motion.div>
             ))}
           </div>
@@ -204,7 +324,7 @@ export function AssessmentPage() {
               </div>
               <div>
                 <p className="text-xs font-bold text-cogni-teal mb-1">2. Adaptive Difficulty</p>
-                <p className="text-xs text-white/40">Questions focus on weak concepts (red/fading nodes) while reviewing strong ones to prevent decay.</p>
+                <p className="text-xs text-white/40">Questions focus on weak concepts (red/fading nodes) while reinforcing strong ones.</p>
               </div>
               <div>
                 <p className="text-xs font-bold text-cogni-warning mb-1">3. Graph Updates</p>

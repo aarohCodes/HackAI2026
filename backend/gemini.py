@@ -13,7 +13,7 @@ from services.gemini_service import (
     socratic_reply,
     generate_quick_snapshot,
 )
-from api.deps import get_current_user
+from deps import get_current_user
 from beanie import PydanticObjectId
 
 router = APIRouter()
@@ -105,7 +105,7 @@ async def get_recommendation(req: RecommendRequest, current_user: User = Depends
         if existing:
             return {"recommendation": existing.model_dump(mode="json"), "cached": True}
 
-    decaying = [
+    target_nodes = [
         {
             "concept": n.concept,
             "retention": n.retention_rt,
@@ -136,13 +136,12 @@ async def get_recommendation(req: RecommendRequest, current_user: User = Depends
             "background": current_user.background,
             "learner_type": current_user.learner_type,
         },
-        decaying_nodes=decaying,
+        decaying_nodes=target_nodes,
         recent_signals=signals,
     )
 
     target_node = nodes[0]
 
-    # Safely convert learning_mode string to enum (Gemini may return unexpected values)
     raw_mode = result.get("learning_mode")
     safe_mode = None
     if raw_mode:

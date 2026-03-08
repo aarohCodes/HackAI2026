@@ -13,7 +13,7 @@ export function ScenarioPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user, sidebarOpen, graphNodes, fetchGraph } = useStore()
-  const conceptParam = searchParams.get('concept')
+  const conceptParam = searchParams.get('concept') || searchParams.get('topic')
 
   const [loading, setLoading] = useState(true)
   const [scenario, setScenario] = useState(null)
@@ -27,7 +27,7 @@ export function ScenarioPage() {
       if (!concept) {
         const { nodes } = await fetchGraph()
         const weak = nodes.filter((n) => ['fading', 'yellow', 'red'].includes(n.state))
-        concept = weak.length > 0 ? weak[Math.floor(Math.random() * weak.length)].concept : (nodes[0]?.concept || 'Machine Learning')
+        concept = weak.length > 0 ? weak[Math.floor(Math.random() * weak.length)].concept : (nodes[0]?.concept || 'General Knowledge')
       }
 
       try {

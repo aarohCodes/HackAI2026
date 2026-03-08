@@ -7,11 +7,12 @@ import { DashboardPage } from './pages/Dashboard'
 import { HubsPage } from './pages/Hubs'
 import { CanvasPage } from './pages/Canvas'
 import { VideoViewPage } from './pages/VideoView'
-import { MetricsPage } from './pages/Metrics'
 import { AssessmentPage } from './pages/Assessment'
 import { QuizPage } from './pages/QuizPage'
 import { ScenarioPage } from './pages/ScenarioPage'
 import { DrillPage } from './pages/DrillPage'
+import { SubHubPage } from './pages/SubHub'
+import { ResourcePage } from './pages/ResourcePage'
 
 function ProtectedRoute({ children }) {
   const user = useStore((s) => s.user)
@@ -48,13 +49,14 @@ export default function App() {
         {/* Protected app pages */}
         <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
         <Route path="/hubs" element={<ProtectedRoute><HubsPage /></ProtectedRoute>} />
+        <Route path="/hubs/:domain" element={<ProtectedRoute><SubHubPage /></ProtectedRoute>} />
         <Route path="/canvas" element={<ProtectedRoute><CanvasPage /></ProtectedRoute>} />
         <Route path="/video/:nodeId" element={<ProtectedRoute><VideoViewPage /></ProtectedRoute>} />
-        <Route path="/metrics" element={<ProtectedRoute><MetricsPage /></ProtectedRoute>} />
         <Route path="/assess" element={<ProtectedRoute><AssessmentPage /></ProtectedRoute>} />
         <Route path="/assess/quiz" element={<ProtectedRoute><QuizPage /></ProtectedRoute>} />
         <Route path="/assess/scenario" element={<ProtectedRoute><ScenarioPage /></ProtectedRoute>} />
         <Route path="/assess/drill" element={<ProtectedRoute><DrillPage /></ProtectedRoute>} />
+        <Route path="/learn/:nodeId" element={<ProtectedRoute><ResourcePage /></ProtectedRoute>} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to={homePath} replace />} />

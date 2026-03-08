@@ -8,8 +8,12 @@ from database.models import (
 )
 from services.gamification_service import award_xp, check_achievements
 from services.gemini_service import generate_topic_nodes
-from api.deps import get_current_user
+from deps import get_current_user
 from beanie import PydanticObjectId
+from db import past_learning_col
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -114,9 +118,30 @@ async def log_learning_event(req: EventRequest, current_user: User = Depends(get
 
     node.review_count += 1
     node.last_reviewed = datetime.utcnow()
-    if req.event_type in ("view", "practice", "feynman") and node.state == NodeState.RED:
+    if req.event_type in ("view", "practice", "feynman", "complete") and node.state == NodeState.RED:
         node.state = NodeState.YELLOW
+    if req.event_type == "complete":
+        node.state = NodeState.GREEN
+        node.mastery_score = max(node.mastery_score, 0.85)
+        node.retention_rt = max(node.retention_rt, 0.9)
     await node.save()
+
+    try:
+        past_learning_col.update_one(
+            {"user_id": str(uid), "topic": node.concept},
+            {"$set": {
+                "user_id": str(uid),
+                "topic": node.concept,
+                "domain": node.domain,
+                "progress": int(node.mastery_score * 100),
+                "score": int(node.retention_rt * 100),
+                "state": node.state.value,
+                "review_count": node.review_count,
+            }},
+            upsert=True,
+        )
+    except Exception:
+        logger.warning("Failed to upsert past_learning for %s", node.concept)
 
     new_achievements = await check_achievements(uid)
 
@@ -151,29 +176,53 @@ async def add_topic(req: AddTopicRequest, current_user: User = Depends(get_curre
     existing_nodes = await ConceptNode.find(ConceptNode.user_id == uid).to_list()
     existing_concepts = [n.concept for n in existing_nodes]
 
-    # Calculate position offset so new nodes don't overlap existing ones
     max_x = max((n.canvas_x for n in existing_nodes), default=0)
     avg_y = sum(n.canvas_y for n in existing_nodes) / len(existing_nodes) if existing_nodes else 0
 
-    graph_data = generate_topic_nodes(
-        topic=req.topic,
-        background=current_user.background or "",
-        existing_concepts=existing_concepts,
-        start_x=max_x + 300,
-        start_y=avg_y,
-    )
+    search_context = ""
+    youtube_context = ""
+    try:
+        from search.search import search_web
+        web_results = await search_web(req.topic)
+        if web_results:
+            search_context = "\n".join(f"- {r.title}: {r.url}" for r in web_results[:2])
+    except Exception as exc:
+        logger.warning("search_web failed for add_topic: %s", exc)
 
-    if not graph_data or "nodes" not in graph_data:
-        raise HTTPException(status_code=502, detail="Failed to generate topic nodes from Gemini")
+    try:
+        from search.youtube import search_youtube
+        yt_result = await search_youtube(req.topic)
+        youtube_context = f"YouTube: {yt_result.title} ({yt_result.video_url})"
+    except Exception as exc:
+        logger.warning("search_youtube failed for add_topic: %s", exc)
+
+    try:
+        graph_data = generate_topic_nodes(
+            topic=req.topic,
+            background=current_user.background or "",
+            existing_concepts=existing_concepts,
+            start_x=max_x + 300,
+            start_y=avg_y,
+        )
+    except Exception as exc:
+        logger.exception("generate_topic_nodes failed for topic %s", req.topic)
+        raise HTTPException(status_code=502, detail=f"Topic generation failed: {exc}") from exc
+
+    if not graph_data or "nodes" not in graph_data or not graph_data["nodes"]:
+        raise HTTPException(status_code=502, detail="Failed to generate topic nodes. Please try again.")
 
     nodes_created = []
     concept_to_id = {}
 
-    # Include existing concept->id mapping for cross-topic edges
     for n in existing_nodes:
         concept_to_id[n.concept.lower()] = n.id
 
-    for n in graph_data["nodes"]:
+    base_x = max_x + 300
+    for i, n in enumerate(graph_data["nodes"]):
+        concept = n.get("concept") or n.get("name")
+        if not concept or not str(concept).strip():
+            continue
+        concept = str(concept).strip()
         state_str = n.get("state", "red")
         try:
             state = NodeState(state_str)
@@ -182,24 +231,28 @@ async def add_topic(req: AddTopicRequest, current_user: User = Depends(get_curre
 
         node = ConceptNode(
             user_id=uid,
-            concept=n["concept"],
+            concept=concept,
             domain=n.get("domain", "general"),
-            complexity_tier=n.get("complexity_tier", 1),
-            dependency_depth=n.get("dependency_depth", 0),
+            complexity_tier=int(n.get("complexity_tier", 1)),
+            dependency_depth=int(n.get("dependency_depth", 0)),
             state=state,
             mastery_score=0.0,
             retention_rt=0.0,
-            canvas_x=n.get("canvas_x", max_x + 300),
-            canvas_y=n.get("canvas_y", 0),
+            canvas_x=float(n.get("canvas_x", base_x + i * 200)),
+            canvas_y=float(n.get("canvas_y", 0)),
             created_at=datetime.utcnow(),
         )
         await node.insert()
         nodes_created.append(node)
-        concept_to_id[n["concept"].lower()] = node.id
+        concept_to_id[concept.lower()] = node.id
 
     for e in graph_data.get("edges", []):
-        from_id = concept_to_id.get(e["from"].lower())
-        to_id = concept_to_id.get(e["to"].lower())
+        from_name = e.get("from") or e.get("from_node")
+        to_name = e.get("to") or e.get("to_node")
+        if not from_name or not to_name:
+            continue
+        from_id = concept_to_id.get(str(from_name).lower())
+        to_id = concept_to_id.get(str(to_name).lower())
         if from_id and to_id:
             edge = KnowledgeEdge(
                 user_id=uid,
@@ -209,8 +262,16 @@ async def add_topic(req: AddTopicRequest, current_user: User = Depends(get_curre
             )
             await edge.insert()
 
+    if not nodes_created:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not create any nodes for this topic. Please try a different topic name.",
+        )
+
     return {
         "nodes_created": len(nodes_created),
+        "search_context": search_context or None,
+        "youtube_context": youtube_context or None,
         "nodes": [
             {
                 "id": str(n.id),

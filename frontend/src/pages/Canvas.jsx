@@ -4,7 +4,7 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { useEffect, useCallback, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useStore } from '../store/useStore'
 import { Sidebar } from '../components/ui/Sidebar'
@@ -15,18 +15,19 @@ import { FeynmanChallenge } from '../components/learning/FeynmanChallenge'
 import { SocraticDebate } from '../components/learning/SocraticDebate'
 import { QuickSnapshot } from '../components/learning/QuickSnapshot'
 import { VideoSnippet } from '../components/learning/VideoSnippet'
-import { useDecayMonitor } from '../hooks/useDecayMonitor'
 import { useGamification } from '../hooks/useGamification'
 import { api } from '../api/client'
 import {
   Brain, Sparkles, Play, BookOpen, ZoomIn, ZoomOut, Maximize,
-  Send, CheckCircle, Circle, Lock, Globe,
+  Send, Globe,
 } from 'lucide-react'
 
 const nodeTypes = { concept: ConceptNode }
 
 function Canvas() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const filterDomain = location.state?.domain || null
   const {
     user, sidebarOpen,
     activeRecommendation, activeLearningMode,
@@ -40,14 +41,22 @@ function Canvas() {
   const [geminiMessages, setGeminiMessages] = useState([])
   const [geminiLoading, setGeminiLoading] = useState(false)
   const [recommendation, setRecommendation] = useState(null)
+  const [webResources, setWebResources] = useState([])
+  const [resourcesLoading, setResourcesLoading] = useState(false)
 
-  useDecayMonitor()
   useGamification()
 
   // Load graph from cached store
   useEffect(() => {
     if (!user) return
-    fetchGraph().then(({ nodes: nodesData, edges: edgesData }) => {
+    fetchGraph().then(({ nodes: rawNodes, edges: rawEdges }) => {
+      const nodesData = filterDomain
+        ? rawNodes.filter((n) => n.domain === filterDomain)
+        : rawNodes
+      const nodeIdSet = new Set(nodesData.map((n) => String(n.id)))
+      const edgesData = (rawEdges || []).filter(
+        (e) => nodeIdSet.has(String(e.from_node_id)) && nodeIdSet.has(String(e.to_node_id))
+      )
       setAllNodes(nodesData)
       setRfNodes(
         nodesData.map((n) => ({
@@ -66,7 +75,7 @@ function Canvas() {
         }))
       )
       setRfEdges(
-        (edgesData || []).map((e) => ({
+        edgesData.map((e) => ({
           id: `${e.from_node_id}-${e.to_node_id}`,
           source: String(e.from_node_id),
           target: String(e.to_node_id),
@@ -82,9 +91,10 @@ function Canvas() {
       if (activeNode) {
         setSelectedNode(activeNode)
         fetchRecommendation(activeNode.id)
+        fetchResources(activeNode.concept)
       }
     }).catch((err) => console.error('Failed to load graph:', err))
-  }, [user])
+  }, [user, filterDomain])
 
   // POST /api/gemini/recommend with node_ids
   const fetchRecommendation = async (nodeId) => {
@@ -108,12 +118,25 @@ function Canvas() {
     [isHistoricalView]
   )
 
+  const fetchResources = async (concept) => {
+    setResourcesLoading(true)
+    try {
+      const res = await api.post('/search/search', { query: concept + ' tutorial' })
+      setWebResources((res.data.web_results || []).slice(0, 2))
+    } catch {
+      setWebResources([])
+    }
+    setResourcesLoading(false)
+  }
+
   const onNodeClick = useCallback((_, node) => {
     const fullNode = allNodes.find((n) => String(n.id) === node.id)
     if (fullNode) {
       setSelectedNode(fullNode)
       setRecommendation(null)
+      setWebResources([])
       fetchRecommendation(fullNode.id)
+      fetchResources(fullNode.concept)
     }
   }, [allNodes])
 
@@ -163,13 +186,6 @@ function Canvas() {
     ? Math.round((allNodes.reduce((s, n) => s + (n.retention_rt || 0), 0) / allNodes.length) * 100)
     : 0
 
-  const progressSteps = [
-    { label: 'Foundations', done: true },
-    { label: 'Supervised Learning', done: true },
-    { label: 'Neural Networks', active: true },
-    { label: 'Advanced AI', locked: true },
-  ]
-
   return (
     <div className="h-screen bg-cogni-bg overflow-hidden flex">
       {/* App sidebar — stays connected */}
@@ -185,12 +201,21 @@ function Canvas() {
           <div className="flex items-center gap-4">
             <span className="font-display font-bold text-sm">
               <span className="text-cogni-accent">Hub Explorer</span>
+              {filterDomain && (
+                <span className="text-white/40 ml-2 text-xs font-normal">
+                  / {filterDomain.replace(/_/g, ' ')}
+                  <button onClick={() => navigate('/canvas', { replace: true })} className="ml-2 text-cogni-teal hover:text-white text-[10px]">Show All</button>
+                </span>
+              )}
             </span>
-            <div className="flex items-center gap-4 ml-4">
-              {['Explorer', 'Library', 'Community'].map((tab, i) => (
-                <button key={tab} className={`text-xs font-medium transition-colors ${i === 0 ? 'text-cogni-accent' : 'text-white/30 hover:text-white'}`}>{tab}</button>
-              ))}
-            </div>
+            {filterDomain && (
+              <button
+                onClick={() => navigate(`/hubs/${encodeURIComponent(filterDomain)}`)}
+                className="text-xs text-cogni-teal hover:text-white transition-colors ml-4"
+              >
+                Back to Sub-Hub
+              </button>
+            )}
           </div>
           {selectedNode && (
             <span className="text-xs text-white/30">
@@ -250,23 +275,20 @@ function Canvas() {
               </div>
             </div>
 
-            {/* Progress path */}
-            <div className="flex items-center justify-center gap-0 py-3 border-t border-white/5 flex-shrink-0 bg-cogni-bg/80 backdrop-blur-xl">
-              {progressSteps.map((step, i) => (
-                <div key={step.label} className="flex items-center">
-                  <div className="flex flex-col items-center gap-1">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center border ${
-                      step.done ? 'bg-cogni-accent/20 border-cogni-accent text-cogni-accent' :
-                      step.active ? 'bg-cogni-teal/20 border-cogni-teal text-cogni-teal' :
-                      'bg-white/5 border-white/10 text-white/20'
-                    }`}>
-                      {step.done ? <CheckCircle size={12} /> : step.active ? <Brain size={12} /> : <Lock size={10} />}
-                    </div>
-                    <span className={`text-[9px] font-medium ${step.active ? 'text-cogni-teal' : step.done ? 'text-white/50' : 'text-white/20'}`}>{step.label}</span>
-                  </div>
-                  {i < progressSteps.length - 1 && <div className={`w-16 h-px mx-2 ${step.done ? 'bg-cogni-accent/40' : 'bg-white/10'}`} />}
-                </div>
-              ))}
+            {/* Bottom stats bar */}
+            <div className="flex items-center justify-center gap-6 py-2.5 border-t border-white/5 flex-shrink-0 bg-cogni-bg/80 backdrop-blur-xl">
+              <span className="text-[10px] text-white/30">
+                <span className="text-cogni-success font-bold">{allNodes.filter((n) => n.state === 'green').length}</span> mastered
+              </span>
+              <span className="text-[10px] text-white/30">
+                <span className="text-cogni-warning font-bold">{allNodes.filter((n) => n.state === 'yellow').length}</span> in progress
+              </span>
+              <span className="text-[10px] text-white/30">
+                <span className="text-cogni-danger font-bold">{allNodes.filter((n) => n.state === 'red').length}</span> to learn
+              </span>
+              <span className="text-[10px] text-white/30">
+                <span className="font-bold text-cogni-accent">{allNodes.length}</span> total
+              </span>
             </div>
           </div>
 
@@ -323,6 +345,26 @@ function Canvas() {
                   <span className="text-xs text-white/50">Watch Video Snippet</span>
                 </button>
                 {selectedNode && (
+                  <button onClick={() => navigate(`/learn/${selectedNode.id}`)}
+                    className="w-full flex items-center gap-2 p-2.5 rounded-lg bg-cogni-accent/[0.08] border border-cogni-accent/20 hover:border-cogni-accent/40 transition-all text-left">
+                    <Sparkles size={14} className="text-cogni-accent flex-shrink-0" />
+                    <span className="text-xs text-cogni-accent/80">Full Resource Page</span>
+                  </button>
+                )}
+                {selectedNode && resourcesLoading && (
+                  <div className="flex items-center gap-2 p-2.5 text-xs text-white/30">
+                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity }} className="w-3 h-3 border border-white/20 border-t-cogni-accent rounded-full" />
+                    Finding resources...
+                  </div>
+                )}
+                {webResources.map((r, i) => (
+                  <a key={i} href={r.url} target="_blank" rel="noopener noreferrer"
+                    className="w-full flex items-center gap-2 p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.06] hover:border-white/15 transition-all text-left">
+                    <Globe size={14} className="text-white/30 flex-shrink-0" />
+                    <span className="text-xs text-white/50 truncate">{r.title}</span>
+                  </a>
+                ))}
+                {selectedNode && !resourcesLoading && webResources.length === 0 && (
                   <a href={`https://www.google.com/search?q=${encodeURIComponent(selectedNode.concept + ' tutorial')}`}
                     target="_blank" rel="noopener noreferrer"
                     className="w-full flex items-center gap-2 p-2.5 rounded-lg bg-white/[0.02] border border-white/[0.06] hover:border-white/15 transition-all text-left">

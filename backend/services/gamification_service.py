@@ -160,7 +160,7 @@ ACHIEVEMENT_DEFINITIONS = [
     {"key": "feynman_apprentice", "name": "Feynman Apprentice", "description": "Complete 5 Feynman challenges", "icon": "🎤", "condition": "feynman_count >= 5", "xp_reward": 200, "rarity": "rare"},
     {"key": "debate_champion", "name": "Debate Champion", "description": "Complete 10 Socratic debates", "icon": "⚔️", "condition": "socratic_count >= 10", "xp_reward": 500, "rarity": "epic"},
     {"key": "streak_fire", "name": "Streak Fire", "description": "Maintain a 7-day streak", "icon": "🔥", "condition": "streak >= 7", "xp_reward": 300, "rarity": "rare"},
-    {"key": "decay_slayer", "name": "Decay Slayer", "description": "Recover 5 fading concepts", "icon": "🛡️", "condition": "recovered >= 5", "xp_reward": 400, "rarity": "epic"},
+    {"key": "concept_master", "name": "Concept Master", "description": "Master 10 concepts (green state)", "icon": "🛡️", "condition": "mastered >= 10", "xp_reward": 400, "rarity": "epic"},
     {"key": "graph_explorer", "name": "Graph Explorer", "description": "Unlock 20 concept nodes", "icon": "🗺️", "condition": "nodes >= 20", "xp_reward": 250, "rarity": "rare"},
     {"key": "speed_demon", "name": "Speed Demon", "description": "Complete 3 Quick Snapshots in under 90 seconds", "icon": "⚡", "condition": "fast_snapshots >= 3", "xp_reward": 350, "rarity": "epic"},
     {"key": "knowledge_keeper", "name": "Knowledge Keeper", "description": "Maintain 90%+ retention for 7 days", "icon": "👑", "condition": "high_retention_days >= 7", "xp_reward": 1000, "rarity": "legendary"},
@@ -175,20 +175,19 @@ async def check_achievements(user_id: PydanticObjectId) -> list[dict]:
 
     events = await LearningEvent.find(LearningEvent.user_id == user_id).to_list()
 
+    from database.models import ConceptNode, NodeState
+    nodes = await ConceptNode.find(ConceptNode.user_id == user_id).to_list()
+
     stats = {
         "events": len(events),
         "feynman_count": sum(1 for e in events if e.event_type == "feynman"),
         "socratic_count": sum(1 for e in events if e.event_type in ("socratic_round", "socratic_complete")),
         "streak": user.streak_days,
-        "nodes": 0,
-        "recovered": 0,
+        "nodes": sum(1 for n in nodes if n.state != NodeState.RED),
+        "mastered": sum(1 for n in nodes if n.state == NodeState.GREEN),
         "fast_snapshots": 0,
         "high_retention_days": 0,
     }
-
-    from database.models import ConceptNode, NodeState
-    nodes = await ConceptNode.find(ConceptNode.user_id == user_id).to_list()
-    stats["nodes"] = sum(1 for n in nodes if n.state != NodeState.RED)
 
     newly_unlocked = []
     for defn in ACHIEVEMENT_DEFINITIONS:

@@ -3,18 +3,21 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useStore } from '../store/useStore'
 import { api, storeUser } from '../api/client'
-import { Search, ArrowRight, Brain, Command, BookOpen, Target, Sparkles } from 'lucide-react'
+import { Search, ArrowRight, Brain, BookOpen, Target, Sparkles, X } from 'lucide-react'
 
-const POPULAR_SUGGESTIONS = [
-  { label: 'Machine Learning', icon: '🧠', color: '#8B5CF6' },
-  { label: 'Financial Modeling', icon: '🏛️', color: '#F59E0B' },
-  { label: 'React Development', icon: '⚛️', color: '#06B6D4' },
-  { label: 'UI/UX Design', icon: '🎨', color: '#2DD4BF' },
-]
-
-const FEATURED_PATHS = [
-  { title: 'Data Science', subtitle: 'Python, SQL, Statistics', gradient: 'from-cogni-accent/40 to-cogni-teal/20' },
-  { title: 'Full Stack Web', subtitle: 'Next.js, Node, PostgreSQL', gradient: 'from-cogni-cyan/40 to-cogni-accent/20' },
+const SUGGESTIONS = [
+  'Machine Learning',
+  'Data Science',
+  'React Development',
+  'UI/UX Design',
+  'Financial Modeling',
+  'Full Stack Web',
+  'Python Programming',
+  'Deep Learning',
+  'Cloud Computing',
+  'Cybersecurity',
+  'Mobile Development',
+  'Game Development',
 ]
 
 const LEARNER_TYPES = [
@@ -23,15 +26,16 @@ const LEARNER_TYPES = [
   { value: 'binge', label: 'Binge', desc: 'Deep focused bursts', icon: '⚡' },
 ]
 
-const STEP_LABELS = ['Goal Setting', 'Background', 'Launch']
+const STEP_LABELS = ['Topics', 'Background', 'Review']
 
 export function Onboarding() {
   const navigate = useNavigate()
   const { user, setUser, invalidateGraph } = useStore()
   const [step, setStep] = useState(0)
   const [loading, setLoading] = useState(false)
+  const [selectedTopics, setSelectedTopics] = useState([])
+  const [topicInput, setTopicInput] = useState('')
   const [form, setForm] = useState({
-    goal: '',
     background: '',
     prior_history: '',
     learner_type: 'gradual',
@@ -39,16 +43,37 @@ export function Onboarding() {
 
   const update = (key, value) => setForm((f) => ({ ...f, [key]: value }))
 
+  const toggleTopic = (topic) => {
+    setSelectedTopics((prev) =>
+      prev.includes(topic) ? prev.filter((t) => t !== topic) : [...prev, topic]
+    )
+  }
+
+  const addCustomTopic = () => {
+    const trimmed = topicInput.trim()
+    if (trimmed && !selectedTopics.includes(trimmed)) {
+      setSelectedTopics((prev) => [...prev, trimmed])
+    }
+    setTopicInput('')
+  }
+
   const handleSubmit = async () => {
     if (loading) return
     setLoading(true)
     try {
-      const res = await api.post('/users/onboard', form)
-      const updatedUser = { ...user, ...res.data.user, has_onboarded: true }
+      const res = await api.post('/users/onboard', {
+        topics: selectedTopics,
+        goal: selectedTopics.join(', '),
+        background: form.background,
+        prior_history: form.prior_history,
+        learner_type: form.learner_type,
+      })
+      const updatedUser = { ...user, ...res.data.user, has_onboarded: true, topics: res.data.user?.topics ?? selectedTopics }
       storeUser(updatedUser)
       setUser(updatedUser)
       invalidateGraph()
-      navigate('/dashboard')
+      // Defer so store and localStorage are committed before guard re-renders
+      setTimeout(() => navigate('/dashboard', { replace: true }), 0)
     } catch (err) {
       console.error('Onboarding failed:', err)
       setLoading(false)
@@ -59,18 +84,16 @@ export function Onboarding() {
 
   return (
     <div className="min-h-screen bg-cogni-bg flex flex-col">
-      {/* Ambient glow */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-[-200px] left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-cogni-accent/[0.06] rounded-full blur-[120px]" />
       </div>
 
-      {/* Top bar */}
       <div className="relative z-10 flex items-center justify-between px-8 py-5">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cogni-accent to-cogni-teal flex items-center justify-center">
             <Brain size={20} className="text-white" />
           </div>
-          <span className="font-display font-bold text-xl tracking-tight">CogniPath</span>
+          <span className="font-display font-bold text-xl tracking-tight">Cortex</span>
         </div>
         <button
           onClick={() => navigate('/dashboard')}
@@ -80,9 +103,7 @@ export function Onboarding() {
         </button>
       </div>
 
-      {/* Content */}
       <div className="relative z-10 flex-1 flex flex-col items-center px-6 pt-8 pb-12 max-w-2xl mx-auto w-full">
-        {/* Progress */}
         <div className="w-full mb-10">
           <div className="flex items-center justify-between mb-2">
             <div>
@@ -103,7 +124,6 @@ export function Onboarding() {
         </div>
 
         <AnimatePresence mode="wait">
-          {/* Step 0: What do you want to learn */}
           {step === 0 && (
             <motion.div
               key="step0"
@@ -121,70 +141,68 @@ export function Onboarding() {
                 ?
               </h1>
               <p className="text-center text-white/40 mt-3 text-lg">
-                Tell us your interests and we'll build a personalized learning path just for you.
+                Select multiple topics or add your own. We'll build a personalized path for each.
               </p>
 
-              {/* Search input */}
-              <div className="mt-10 flex items-center bg-cogni-card border border-cogni-border rounded-2xl px-5 py-4 gap-3 shadow-xl shadow-black/20">
-                <Search size={20} className="text-white/30 flex-shrink-0" />
+              <div className="mt-8 flex items-center bg-cogni-card border border-cogni-border rounded-2xl px-5 py-3.5 gap-3">
+                <Search size={18} className="text-white/30 flex-shrink-0" />
                 <input
                   type="text"
-                  value={form.goal}
-                  onChange={(e) => update('goal', e.target.value)}
-                  placeholder="Search for skills, topics, or paths..."
-                  className="flex-1 bg-transparent text-white placeholder-white/30 outline-none"
+                  value={topicInput}
+                  onChange={(e) => setTopicInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addCustomTopic()}
+                  placeholder="Type a custom topic and press Enter..."
+                  className="flex-1 bg-transparent text-white placeholder-white/30 outline-none text-sm"
                 />
-                <div className="flex items-center gap-1 text-white/20 text-xs border border-white/10 rounded-lg px-2 py-1">
-                  <Command size={10} /> K
-                </div>
+                {topicInput.trim() && (
+                  <button onClick={addCustomTopic} className="text-xs text-cogni-accent font-semibold hover:text-white">
+                    Add
+                  </button>
+                )}
               </div>
 
-              {/* Popular suggestions */}
+              {selectedTopics.length > 0 && (
+                <div className="mt-4">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-cogni-teal mb-2">
+                    Selected ({selectedTopics.length})
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedTopics.map((topic) => (
+                      <span
+                        key={topic}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cogni-accent/15 border border-cogni-accent/40 text-sm font-medium"
+                      >
+                        {topic}
+                        <button onClick={() => toggleTopic(topic)} className="text-white/40 hover:text-white">
+                          <X size={12} />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="mt-6">
                 <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-white/30 mb-3">
-                  Popular Suggestions
+                  Suggestions
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {POPULAR_SUGGESTIONS.map(({ label, icon, color }) => (
+                  {SUGGESTIONS.filter((s) => !selectedTopics.includes(s)).map((label) => (
                     <button
                       key={label}
-                      onClick={() => update('goal', label)}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-all hover:scale-[1.02]"
-                      style={{
-                        borderColor: form.goal === label ? `${color}60` : 'rgba(255,255,255,0.1)',
-                        background: form.goal === label ? `${color}15` : 'rgba(255,255,255,0.03)',
-                      }}
+                      onClick={() => toggleTopic(label)}
+                      className="px-4 py-2.5 rounded-xl border border-white/10 bg-white/[0.03] text-sm font-medium
+                                 hover:border-cogni-accent/40 hover:bg-cogni-accent/10 transition-all hover:scale-[1.02]"
                     >
-                      <span>{icon}</span>
-                      <span className="text-sm font-medium">{label}</span>
+                      {label}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Featured paths */}
-              <div className="grid grid-cols-2 gap-4 mt-8">
-                {FEATURED_PATHS.map(({ title, subtitle, gradient }) => (
-                  <button
-                    key={title}
-                    onClick={() => update('goal', title)}
-                    className={`relative overflow-hidden rounded-2xl p-5 text-left transition-all hover:scale-[1.02] border ${
-                      form.goal === title ? 'border-cogni-accent/50' : 'border-white/10'
-                    }`}
-                  >
-                    <div className={`absolute inset-0 bg-gradient-to-br ${gradient}`} />
-                    <div className="absolute inset-0 bg-cogni-card/60" />
-                    <div className="relative z-10">
-                      <h3 className="font-display font-bold text-lg">{title}</h3>
-                      <p className="text-xs text-white/50 mt-1">{subtitle}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-
               <button
-                onClick={() => form.goal && setStep(1)}
-                disabled={!form.goal}
+                onClick={() => selectedTopics.length > 0 && setStep(1)}
+                disabled={selectedTopics.length === 0}
                 className="cogni-btn-primary w-full mt-8 flex items-center justify-center gap-2 py-3.5 disabled:opacity-30"
               >
                 Continue <ArrowRight size={16} />
@@ -192,7 +210,6 @@ export function Onboarding() {
             </motion.div>
           )}
 
-          {/* Step 1: Background + Learner Type */}
           {step === 1 && (
             <motion.div
               key="step1"
@@ -264,16 +281,12 @@ export function Onboarding() {
               </div>
 
               <div className="flex gap-3 mt-8">
-                <button
-                  onClick={() => setStep(0)}
-                  className="cogni-btn-secondary flex-1 py-3.5"
-                >
+                <button onClick={() => setStep(0)} className="cogni-btn-secondary flex-1 py-3.5">
                   Back
                 </button>
                 <button
-                  onClick={() => form.background ? setStep(2) : null}
-                  disabled={!form.background}
-                  className="cogni-btn-primary flex-1 py-3.5 flex items-center justify-center gap-2 disabled:opacity-30"
+                  onClick={() => setStep(2)}
+                  className="cogni-btn-primary flex-1 py-3.5 flex items-center justify-center gap-2"
                 >
                   Continue <ArrowRight size={16} />
                 </button>
@@ -281,7 +294,6 @@ export function Onboarding() {
             </motion.div>
           )}
 
-          {/* Step 2: Launch */}
           {step === 2 && (
             <motion.div
               key="step2"
@@ -301,21 +313,30 @@ export function Onboarding() {
                 </span>
               </h1>
               <p className="text-white/40 mt-3 max-w-md mx-auto">
-                Gemini AI will analyze your profile and create a personalized knowledge graph with 15-25 concepts.
+                Gemini AI will create a personalized knowledge graph across all your selected topics.
               </p>
 
-              {/* Summary */}
-              <div className="mt-8 p-5 rounded-2xl bg-cogni-card border border-cogni-border text-left space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-white/40">Goal</span>
-                  <span className="text-sm font-semibold">{form.goal}</span>
+              <div className="mt-8 p-5 rounded-2xl bg-cogni-card border border-cogni-border text-left space-y-4">
+                <div>
+                  <span className="text-xs text-white/40 block mb-2">Topics</span>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedTopics.map((t) => (
+                      <span key={t} className="px-3 py-1.5 rounded-lg bg-cogni-accent/15 border border-cogni-accent/30 text-sm font-medium">
+                        {t}
+                      </span>
+                    ))}
+                  </div>
                 </div>
                 <div className="h-px bg-white/5" />
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-white/40">Background</span>
-                  <span className="text-sm font-semibold truncate max-w-[250px]">{form.background}</span>
-                </div>
-                <div className="h-px bg-white/5" />
+                {form.background && (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-white/40">Background</span>
+                      <span className="text-sm font-semibold truncate max-w-[300px]">{form.background}</span>
+                    </div>
+                    <div className="h-px bg-white/5" />
+                  </>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-white/40">Learner Type</span>
                   <span className="text-sm font-semibold capitalize">{form.learner_type}</span>
@@ -323,10 +344,7 @@ export function Onboarding() {
               </div>
 
               <div className="flex gap-3 mt-8">
-                <button
-                  onClick={() => setStep(1)}
-                  className="cogni-btn-secondary flex-1 py-3.5"
-                >
+                <button onClick={() => setStep(1)} className="cogni-btn-secondary flex-1 py-3.5">
                   Back
                 </button>
                 <button
@@ -342,7 +360,7 @@ export function Onboarding() {
                   ) : (
                     <>
                       <Sparkles size={16} />
-                      Launch My CogniPath
+                      Launch My Cortex
                     </>
                   )}
                 </button>
@@ -351,9 +369,8 @@ export function Onboarding() {
           )}
         </AnimatePresence>
 
-        {/* Footer */}
         <p className="text-[11px] text-white/20 mt-auto pt-12">
-          &copy; 2026 CogniPath AI. Powered by your curiosity.
+          &copy; 2026 Cortex AI. Powered by your curiosity.
         </p>
       </div>
     </div>

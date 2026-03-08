@@ -58,6 +58,7 @@ class User(Document):
     background: str = ""
     prior_history: Optional[str] = None
     learner_type: str = "gradual"
+    topics: List[str] = Field(default_factory=list)
 
     # Gamification
     xp: int = 0

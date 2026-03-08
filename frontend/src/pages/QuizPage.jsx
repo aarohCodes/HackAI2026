@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Sidebar } from '../components/ui/Sidebar'
 import { useStore } from '../store/useStore'
@@ -189,9 +189,12 @@ function QuestionCard({ question, index, total, onAnswer, answered, selectedAnsw
 
 export function QuizPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const topicParam = searchParams.get('topic')
   const { user, sidebarOpen } = useStore()
   const [loading, setLoading] = useState(true)
   const [quiz, setQuiz] = useState(null)
+  const [quizError, setQuizError] = useState(null)
   const [currentQ, setCurrentQ] = useState(0)
   const [answers, setAnswers] = useState({})
   const [startTime] = useState(Date.now())
@@ -199,16 +202,44 @@ export function QuizPage() {
   const [results, setResults] = useState(null)
 
   useEffect(() => {
-    api.post('/assess/quiz/generate', { difficulty: 'mixed' })
-      .then((res) => {
-        setQuiz(res.data)
-        setLoading(false)
-      })
-      .catch((err) => {
+    setQuizError(null)
+    const generateQuiz = async () => {
+      try {
+        if (topicParam) {
+          const res = await api.post('/quiz', { topic: topicParam })
+          const data = res.data
+          if (!data.questions?.length) {
+            setQuizError('No questions generated. Try a different topic.')
+            return
+          }
+          setQuiz({
+            quiz_title: `Quiz: ${data.topic}`,
+            total_questions: data.questions.length,
+            estimated_minutes: Math.ceil(data.questions.length * 1.5),
+            questions: data.questions.map((q) => ({
+              type: 'multiple_choice',
+              question: q.question,
+              concept: data.topic,
+              difficulty: 'mixed',
+              options: (q.options || []).map((o) => `${o.label || '?'}. ${o.text || ''}`),
+              correct_answer: q.correct_answer,
+              explanation: q.explanation || '',
+            })),
+          })
+        } else {
+          const res = await api.post('/assess/quiz/generate', { difficulty: 'mixed' })
+          setQuiz(res.data)
+        }
+      } catch (err) {
+        const msg = err.response?.data?.detail || err.message || 'Quiz generation failed.'
+        setQuizError(Array.isArray(msg) ? msg.join(' ') : msg)
         console.error('Failed to generate quiz:', err)
+      } finally {
         setLoading(false)
-      })
-  }, [])
+      }
+    }
+    generateQuiz()
+  }, [topicParam])
 
   const handleAnswer = useCallback(async (answer) => {
     if (!quiz) return
@@ -283,9 +314,14 @@ export function QuizPage() {
       <div className="min-h-screen bg-cogni-bg">
         <Sidebar />
         <div className="transition-all duration-300 p-8 flex items-center justify-center min-h-screen" style={{ marginLeft: sidebarOpen ? 224 : 72 }}>
-          <div className="text-center">
-            <p className="text-white/50">Could not generate quiz. Please try again.</p>
-            <button onClick={() => navigate('/assess')} className="cogni-btn-primary mt-4">Back to Assessment</button>
+          <div className="text-center max-w-md">
+            <p className="text-white/50">
+              {quizError || 'Could not generate quiz. Please try again.'}
+            </p>
+            <div className="flex justify-center gap-3 mt-6">
+              <button onClick={() => navigate('/assess')} className="cogni-btn-secondary">Back to Assessment</button>
+              <button onClick={() => window.location.reload()} className="cogni-btn-primary">Try Again</button>
+            </div>
           </div>
         </div>
       </div>

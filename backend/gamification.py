@@ -7,7 +7,7 @@ from services.gamification_service import (
     get_leaderboard,
     ACHIEVEMENT_DEFINITIONS,
 )
-from api.deps import get_current_user
+from deps import get_current_user
 
 router = APIRouter()
 

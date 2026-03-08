@@ -78,16 +78,36 @@ export function VideoViewPage() {
     }
   }, [node])
 
-  // Generate web resource links based on concept
+  const [resourcesLoading, setResourcesLoading] = useState(false)
+
   useEffect(() => {
     if (!node) return
     const concept = node.concept
-    const encoded = encodeURIComponent(concept)
-    setWebResources([
-      { title: `${concept} - Wikipedia`, url: `https://en.wikipedia.org/wiki/${encoded.replace(/%20/g, '_')}`, icon: Globe },
-      { title: `${concept} Tutorial - MDN / Docs`, url: `https://www.google.com/search?q=${encoded}+documentation+tutorial`, icon: BookOpen },
-      { title: `${concept} - Research Papers`, url: `https://scholar.google.com/scholar?q=${encoded}`, icon: BookOpen },
-    ])
+    setResourcesLoading(true)
+    api.post('/search/search', { query: concept + ' tutorial' })
+      .then((res) => {
+        const results = (res.data.web_results || []).slice(0, 2).map((item) => ({
+          title: item.title,
+          url: item.url,
+          icon: Globe,
+        }))
+        if (results.length === 0) {
+          results.push({
+            title: `Search Google for ${concept}`,
+            url: `https://www.google.com/search?q=${encodeURIComponent(concept + ' tutorial')}`,
+            icon: Globe,
+          })
+        }
+        setWebResources(results)
+      })
+      .catch(() => {
+        setWebResources([{
+          title: `Search Google for ${concept}`,
+          url: `https://www.google.com/search?q=${encodeURIComponent(concept + ' tutorial')}`,
+          icon: Globe,
+        }])
+      })
+      .finally(() => setResourcesLoading(false))
   }, [node])
 
   // Chat with Gemini via recommend endpoint
@@ -135,7 +155,7 @@ export function VideoViewPage() {
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cogni-accent to-cogni-teal flex items-center justify-center">
               <Brain size={16} className="text-white" />
             </div>
-            <span className="font-display font-bold text-lg">CogniPath</span>
+            <span className="font-display font-bold text-lg">Cortex</span>
           </div>
           <div className="flex items-center gap-6 ml-4">
             {['Courses', 'My Library', 'Certifications'].map((tab) => (
@@ -231,7 +251,12 @@ export function VideoViewPage() {
                 <h3 className="font-display font-bold text-cogni-warning">Key Resources</h3>
               </div>
               <div className="space-y-2">
-                {webResources.map((res, i) => (
+                {resourcesLoading ? (
+                  <div className="cogni-card flex items-center gap-2 text-sm text-white/40">
+                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity }} className="w-4 h-4 border-2 border-white/20 border-t-cogni-accent rounded-full" />
+                    Finding resources...
+                  </div>
+                ) : webResources.map((res, i) => (
                   <a
                     key={i}
                     href={res.url}

@@ -46,7 +46,11 @@ def _call_gemini_once(prompt: str) -> dict | None:
                 model=MODEL,
                 contents=prompt,
             )
-            return _safe_parse_json(response.text)
+            text = getattr(response, "text", None)
+            if not text or not str(text).strip():
+                logger.warning("Gemini returned empty text")
+                return None
+            return _safe_parse_json(str(text).strip())
         except Exception as e:
             err_str = str(e).lower()
             if "429" in err_str or "resource" in err_str or "rate" in err_str:
@@ -83,14 +87,14 @@ def _call_gemini(prompt: str, retry_strict: bool = True) -> dict | None:
 def build_recommendation(
     user_profile: dict, decaying_nodes: list, recent_signals: list
 ) -> dict:
-    prompt = f"""You are a personalized learning coach AI inside CogniPath.
+    prompt = f"""You are a personalized learning coach AI inside Cortex.
 
 USER PROFILE:
 - Goal: {user_profile['goal']}
 - Background: {user_profile['background']}
 - Learner Type: {user_profile.get('learner_type', 'unknown')}
 
-DECAYING CONCEPTS (ML model flagged these as about to be forgotten):
+CONCEPTS TO REVIEW (these need attention based on current retention):
 {json.dumps(decaying_nodes, indent=2)}
 
 RECENT BEHAVIORAL SIGNALS:
@@ -207,29 +211,33 @@ Respond ONLY with valid JSON:
     return result
 
 
-ONBOARDING_PROMPT = """You are initializing a personalized knowledge graph for a new learner on CogniPath, an AI-powered adaptive learning platform.
+def _topic_to_domain(topic: str) -> str:
+    """Convert a topic name to a domain slug (e.g. 'Machine Learning' -> 'machine_learning')."""
+    return topic.strip().lower().replace(" ", "_").replace("-", "_").replace("/", "_") or "general"
 
+
+ONBOARDING_PROMPT = """You are initializing a personalized knowledge graph for a new learner on Cortex, an AI-powered adaptive learning platform.
+
+LEARNER TOPICS OF INTEREST (each must become its own hub/domain): {topics}
+REQUIRED DOMAIN VALUES (use these EXACT strings for the "domain" field): {topics_list}
 LEARNER GOAL: {goal}
 LEARNER BACKGROUND: {background}
 PRIOR LEARNING HISTORY: {prior_history}
 
-Generate a knowledge graph of 15-25 concepts that maps the SPECIFIC journey
-from their current knowledge to their goal. The concepts MUST be tailored to what 
-the learner actually wants to learn — do NOT use generic placeholder concepts.
+IMPORTANT: You MUST create nodes for EACH of the topics above separately.
+- Use EXACTLY the domain values from "REQUIRED DOMAIN VALUES" for the "domain" field — one domain per topic.
+- Each domain MUST have at least 4 nodes (sub-concepts). So if there are 3 topics, you need at least 12 nodes total.
+- Total graph: 15-25+ concepts covering ALL topics. Concepts MUST be specific to each topic.
 
 Rules:
 - Concepts the learner already knows based on their background -> state: 'green'
 - Concepts they partially know or have some exposure to -> state: 'yellow'
-- Concepts they need to learn to reach their goal -> state: 'red'
+- Concepts they need to learn -> state: 'red'
 - complexity_tier: 1=fundamental, 2=intermediate, 3=advanced
 - dependency_depth: how many prerequisite hops from the root concept
-- canvas_x, canvas_y: arrange as a left-to-right learning path,
-  x from 100 to 1600 spacing ~150-200px apart, y centered around 0 with +/-200 spread
-- edges: prerequisite edges from simpler to harder concepts
-- Include at least 3-4 green nodes (things they already know) as foundation
-- Include 3-5 yellow nodes (partially known)
-- Fill the rest with red nodes (need to learn) building toward the goal
-- Every concept name should be specific and descriptive (e.g., "Gradient Descent" not "Math")
+- canvas_x, canvas_y: arrange left-to-right, x from 100 to 1600 spacing ~150-200px, y around 0 with +/-200 spread
+- edges: prerequisite edges from simpler to harder concepts (can link within same domain or across)
+- Every concept name should be specific (e.g., "Gradient Descent" not "Math")
 
 Return ONLY valid JSON (no markdown fences, no extra text):
 {{
@@ -251,82 +259,98 @@ Return ONLY valid JSON (no markdown fences, no extra text):
 
 
 def generate_onboarding_graph(
-    goal: str, background: str, prior_history: str = ""
+    goal: str, background: str, prior_history: str = "", topics: list[str] = None
 ) -> dict | None:
     """Generate a personalized knowledge graph via Gemini. Returns graph data or a fallback."""
+    topics = topics or []
+    topics_str = ", ".join(topics) if topics else goal
+    topics_list = ", ".join(_topic_to_domain(t) for t in topics) if topics else _topic_to_domain(goal)
     prompt = ONBOARDING_PROMPT.format(
-        goal=goal, background=background, prior_history=prior_history or "None provided"
+        topics=topics_str,
+        topics_list=topics_list,
+        goal=goal,
+        background=background,
+        prior_history=prior_history or "None provided",
     )
 
     result = _call_gemini(prompt)
 
     if result and "nodes" in result and len(result["nodes"]) >= 5:
+        # Post-process: ensure each topic has at least one node (domain)
+        required_domains = [_topic_to_domain(t) for t in topics] if topics else []
+        existing_domains = {n.get("domain", "").strip().lower().replace(" ", "_") for n in result["nodes"]}
+        nodes = list(result["nodes"])
+        edges = list(result.get("edges", []))
+        base_x = 100
+        for topic in topics:
+            domain_slug = _topic_to_domain(topic)
+            if domain_slug not in existing_domains:
+                # Add 4 stub nodes for this topic so it appears as its own hub
+                for i, (label, state) in enumerate([
+                    (f"Introduction to {topic}", "yellow"),
+                    (f"Core concepts of {topic}", "red"),
+                    (f"Practice {topic}", "red"),
+                    (f"Advanced {topic}", "red"),
+                ]):
+                    nodes.append({
+                        "concept": label,
+                        "domain": domain_slug,
+                        "state": state,
+                        "complexity_tier": min(3, i + 1),
+                        "dependency_depth": i,
+                        "canvas_x": base_x + i * 200,
+                        "canvas_y": (i % 2) * 80 - 40,
+                    })
+                    if i > 0:
+                        edges.append({
+                            "from": nodes[-2]["concept"],
+                            "to": label,
+                            "type": "prerequisite",
+                        })
+                base_x += 800
+                existing_domains.add(domain_slug)
+                logger.info("Added stub nodes for missing domain: %s", domain_slug)
+        result = {"nodes": nodes, "edges": edges, **{k: v for k, v in result.items() if k not in ("nodes", "edges")}}
         logger.info("Gemini onboarding graph generated: %d nodes, %d edges",
-                     len(result["nodes"]), len(result.get("edges", [])))
+                   len(result["nodes"]), len(result.get("edges", [])))
         return result
 
     logger.warning("Gemini onboarding returned insufficient data, generating fallback graph for goal: %s", goal)
-    return _build_fallback_graph(goal, background)
+    return _build_fallback_graph(goal, background, topics)
 
 
-def _build_fallback_graph(goal: str, background: str) -> dict:
-    """Build a reasonable starter graph when Gemini fails, based on the user's actual goal."""
-    goal_lower = goal.lower()
-    bg_lower = background.lower()
-
-    domain = "general"
-    if any(kw in goal_lower for kw in ["ml", "machine learning", "ai", "deep learning", "data science"]):
-        domain = "machine_learning"
-    elif any(kw in goal_lower for kw in ["web", "react", "frontend", "backend", "full stack", "fullstack"]):
-        domain = "web_development"
-    elif any(kw in goal_lower for kw in ["python", "programming", "coding", "software"]):
-        domain = "programming"
-    elif any(kw in goal_lower for kw in ["design", "ux", "ui", "figma"]):
-        domain = "design"
-    elif any(kw in goal_lower for kw in ["finance", "trading", "accounting", "financial"]):
-        domain = "finance"
-
-    nodes = [
-        {"concept": f"Foundations of {goal}", "domain": domain, "state": "green" if background else "yellow",
-         "complexity_tier": 1, "dependency_depth": 0, "canvas_x": 100, "canvas_y": 0},
-        {"concept": f"Core Principles", "domain": domain, "state": "yellow",
-         "complexity_tier": 1, "dependency_depth": 0, "canvas_x": 100, "canvas_y": -120},
-        {"concept": f"Key Terminology", "domain": domain, "state": "green",
-         "complexity_tier": 1, "dependency_depth": 0, "canvas_x": 100, "canvas_y": 120},
-        {"concept": f"Intermediate {goal} Skills", "domain": domain, "state": "yellow",
-         "complexity_tier": 2, "dependency_depth": 1, "canvas_x": 400, "canvas_y": -60},
-        {"concept": f"Practical Applications", "domain": domain, "state": "red",
-         "complexity_tier": 2, "dependency_depth": 1, "canvas_x": 400, "canvas_y": 60},
-        {"concept": f"Problem Solving in {goal}", "domain": domain, "state": "red",
-         "complexity_tier": 2, "dependency_depth": 2, "canvas_x": 700, "canvas_y": -80},
-        {"concept": f"Tools & Frameworks", "domain": domain, "state": "red",
-         "complexity_tier": 2, "dependency_depth": 2, "canvas_x": 700, "canvas_y": 80},
-        {"concept": f"Advanced {goal} Concepts", "domain": domain, "state": "red",
-         "complexity_tier": 3, "dependency_depth": 3, "canvas_x": 1000, "canvas_y": -60},
-        {"concept": f"Real-World Projects", "domain": domain, "state": "red",
-         "complexity_tier": 3, "dependency_depth": 3, "canvas_x": 1000, "canvas_y": 60},
-        {"concept": f"Mastery & Portfolio", "domain": domain, "state": "red",
-         "complexity_tier": 3, "dependency_depth": 4, "canvas_x": 1300, "canvas_y": 0},
-    ]
-
-    edges = [
-        {"from": f"Foundations of {goal}", "to": f"Intermediate {goal} Skills", "type": "prerequisite"},
-        {"from": "Core Principles", "to": f"Intermediate {goal} Skills", "type": "prerequisite"},
-        {"from": "Key Terminology", "to": "Practical Applications", "type": "prerequisite"},
-        {"from": f"Intermediate {goal} Skills", "to": f"Problem Solving in {goal}", "type": "prerequisite"},
-        {"from": "Practical Applications", "to": "Tools & Frameworks", "type": "prerequisite"},
-        {"from": f"Problem Solving in {goal}", "to": f"Advanced {goal} Concepts", "type": "prerequisite"},
-        {"from": "Tools & Frameworks", "to": "Real-World Projects", "type": "prerequisite"},
-        {"from": f"Advanced {goal} Concepts", "to": f"Mastery & Portfolio", "type": "prerequisite"},
-        {"from": "Real-World Projects", "to": f"Mastery & Portfolio", "type": "prerequisite"},
-    ]
-
+def _build_fallback_graph(goal: str, background: str, topics: list[str] = None) -> dict:
+    """Build a reasonable starter graph when Gemini fails. One hub per topic if topics provided."""
+    topics = topics or []
+    if not topics:
+        topics = [goal] if goal else ["General Learning"]
+    nodes = []
+    edges = []
+    for topic_idx, topic in enumerate(topics):
+        domain = _topic_to_domain(topic)
+        base_x = 100 + topic_idx * 900
+        topic_nodes = [
+            {"concept": f"Introduction to {topic}", "domain": domain, "state": "yellow",
+             "complexity_tier": 1, "dependency_depth": 0, "canvas_x": base_x, "canvas_y": 0},
+            {"concept": f"Core {topic}", "domain": domain, "state": "red",
+             "complexity_tier": 1, "dependency_depth": 0, "canvas_x": base_x, "canvas_y": -100},
+            {"concept": f"Practice {topic}", "domain": domain, "state": "red",
+             "complexity_tier": 2, "dependency_depth": 1, "canvas_x": base_x + 200, "canvas_y": -50},
+            {"concept": f"Advanced {topic}", "domain": domain, "state": "red",
+             "complexity_tier": 3, "dependency_depth": 2, "canvas_x": base_x + 400, "canvas_y": 0},
+        ]
+        nodes.extend(topic_nodes)
+        edges.extend([
+            {"from": topic_nodes[0]["concept"], "to": topic_nodes[2]["concept"], "type": "prerequisite"},
+            {"from": topic_nodes[1]["concept"], "to": topic_nodes[2]["concept"], "type": "prerequisite"},
+            {"from": topic_nodes[2]["concept"], "to": topic_nodes[3]["concept"], "type": "prerequisite"},
+        ])
     return {"nodes": nodes, "edges": edges, "_fallback": True}
 
 
 def generate_adaptive_quiz(concepts: list[dict], user_background: str, difficulty: str = "mixed") -> dict:
     """Generate a NotebookLM-style adaptive quiz from the user's knowledge graph."""
-    prompt = f"""You are a world-class assessment designer for an adaptive learning platform called CogniPath.
+    prompt = f"""You are a world-class assessment designer for an adaptive learning platform called Cortex.
 
 LEARNER BACKGROUND: {user_background}
 DIFFICULTY PREFERENCE: {difficulty}
@@ -573,6 +597,26 @@ Return ONLY valid JSON:
 }}"""
 
 
+def _build_add_topic_fallback(topic: str, start_x: float, start_y: float) -> dict:
+    """Fallback node set when Gemini fails for add-topic."""
+    domain = _topic_to_domain(topic)
+    nodes = [
+        {"concept": f"Introduction to {topic}", "domain": domain, "state": "red", "complexity_tier": 1, "dependency_depth": 0, "canvas_x": start_x, "canvas_y": start_y},
+        {"concept": f"Core concepts of {topic}", "domain": domain, "state": "red", "complexity_tier": 1, "dependency_depth": 0, "canvas_x": start_x + 200, "canvas_y": start_y - 60},
+        {"concept": f"Key skills in {topic}", "domain": domain, "state": "red", "complexity_tier": 2, "dependency_depth": 1, "canvas_x": start_x + 400, "canvas_y": start_y + 40},
+        {"concept": f"Practice {topic}", "domain": domain, "state": "red", "complexity_tier": 2, "dependency_depth": 1, "canvas_x": start_x + 600, "canvas_y": start_y - 40},
+        {"concept": f"Advanced {topic}", "domain": domain, "state": "red", "complexity_tier": 3, "dependency_depth": 2, "canvas_x": start_x + 800, "canvas_y": start_y},
+    ]
+    edges = [
+        {"from": nodes[0]["concept"], "to": nodes[1]["concept"], "type": "prerequisite"},
+        {"from": nodes[0]["concept"], "to": nodes[2]["concept"], "type": "prerequisite"},
+        {"from": nodes[1]["concept"], "to": nodes[3]["concept"], "type": "prerequisite"},
+        {"from": nodes[2]["concept"], "to": nodes[4]["concept"], "type": "prerequisite"},
+        {"from": nodes[3]["concept"], "to": nodes[4]["concept"], "type": "prerequisite"},
+    ]
+    return {"nodes": nodes, "edges": edges}
+
+
 def generate_topic_nodes(
     topic: str, background: str, existing_concepts: list[str],
     start_x: float = 0, start_y: float = 0,
@@ -584,4 +628,8 @@ def generate_topic_nodes(
         start_x=start_x,
         start_y=start_y,
     )
-    return _call_gemini(prompt)
+    result = _call_gemini(prompt)
+    if result and isinstance(result.get("nodes"), list) and len(result["nodes"]) >= 1:
+        return result
+    logger.warning("Add-topic Gemini returned no/invalid nodes, using fallback for: %s", topic)
+    return _build_add_topic_fallback(topic, start_x, start_y)

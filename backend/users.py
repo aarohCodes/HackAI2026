@@ -5,7 +5,7 @@ from datetime import datetime
 from database.models import User, ConceptNode, KnowledgeEdge, NodeState
 from services.gemini_service import generate_onboarding_graph
 from services.gamification_service import get_user_stats
-from api.deps import get_current_user
+from deps import get_current_user
 from beanie import PydanticObjectId
 import logging
 
@@ -14,8 +14,9 @@ logger = logging.getLogger(__name__)
 
 
 class OnboardRequest(BaseModel):
-    goal: str
-    background: str
+    topics: list[str] = []
+    goal: str = ""
+    background: str = ""
     prior_history: Optional[str] = None
     learner_type: str = "gradual"
 
@@ -26,19 +27,22 @@ async def onboard_user(req: OnboardRequest, current_user: User = Depends(get_cur
     if current_user.goal:
         raise HTTPException(status_code=400, detail="User has already onboarded")
 
-    current_user.goal = req.goal
+    goal = req.goal or ", ".join(req.topics) if req.topics else req.goal
+    current_user.goal = goal
     current_user.background = req.background
     current_user.prior_history = req.prior_history
     current_user.learner_type = req.learner_type
+    current_user.topics = req.topics
     await current_user.save()
 
-    logger.info("Generating onboarding graph for user %s — goal: %s", current_user.id, req.goal)
+    logger.info("Generating onboarding graph for user %s — topics: %s", current_user.id, req.topics)
 
     try:
         graph_data = generate_onboarding_graph(
-            goal=req.goal,
+            goal=goal,
             background=req.background,
             prior_history=req.prior_history or "",
+            topics=req.topics,
         )
     except Exception as exc:
         logger.error("Gemini onboarding call crashed: %s", exc)
@@ -99,6 +103,9 @@ async def onboard_user(req: OnboardRequest, current_user: User = Depends(get_cur
             "email": current_user.email,
             "level": current_user.level,
             "level_title": current_user.level_title,
+            "goal": current_user.goal,
+            "topics": current_user.topics,
+            "has_onboarded": True,
         },
         "nodes_created": len(nodes_created),
         "is_fallback": is_fallback,
@@ -117,6 +124,7 @@ async def get_user_profile(current_user: User = Depends(get_current_user)):
         "goal": current_user.goal,
         "background": current_user.background,
         "learner_type": current_user.learner_type,
+        "topics": current_user.topics,
         "created_at": current_user.created_at.isoformat(),
         "gamification": stats,
     }
@@ -137,6 +145,7 @@ async def get_user(user_id: str, current_user: User = Depends(get_current_user))
         "goal": current_user.goal,
         "background": current_user.background,
         "learner_type": current_user.learner_type,
+        "topics": current_user.topics,
         "created_at": current_user.created_at.isoformat(),
         "gamification": stats,
     }

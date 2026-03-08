@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from datetime import datetime
 from database.models import User
 from services.auth_service import hash_password, create_access_token, authenticate_user
-from api.deps import get_current_user
+from deps import get_current_user
 
 router = APIRouter()
 
