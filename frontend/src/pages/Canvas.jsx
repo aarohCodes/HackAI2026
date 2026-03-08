@@ -9,7 +9,8 @@ import { useStore } from '../store/useStore'
 import { Sidebar } from '../components/ui/Sidebar'
 import { ConceptNode } from '../components/canvas/ConceptNode'
 import { api } from '../api/client'
-import { Search, Brain, Loader2 } from 'lucide-react'
+import { Search, Brain, Loader2, Mic, MicOff } from 'lucide-react'
+import { useVoiceInput } from '../hooks/useVoiceInput'
 
 const nodeTypes = { concept: ConceptNode }
 
@@ -21,6 +22,11 @@ function Canvas() {
   const [allNodes, setAllNodes] = useState([])
   const [searchInput, setSearchInput] = useState('')
   const [searching, setSearching] = useState(false)
+
+  // Voice input via ElevenLabs STT
+  const { isRecording, isTranscribing, toggleRecording, error: voiceError } = useVoiceInput(
+    (text) => setSearchInput((prev) => (prev ? prev + ' ' + text : text))
+  )
 
   const loadGraph = useCallback(({ nodes: nodesData, edges: edgesData }) => {
     setAllNodes(nodesData)
@@ -125,9 +131,22 @@ function Canvas() {
                 className="bg-transparent text-sm text-white placeholder-white/30 outline-none w-56"
                 disabled={searching}
               />
-              {searching && (
+              {(searching || isTranscribing) && (
                 <Loader2 size={14} className="text-cogni-accent animate-spin flex-shrink-0" />
               )}
+              <button
+                type="button"
+                onClick={toggleRecording}
+                disabled={searching || isTranscribing}
+                className={`flex-shrink-0 p-0.5 rounded-lg transition-all ${
+                  isRecording
+                    ? 'text-red-400 animate-pulse'
+                    : 'text-white/30 hover:text-cogni-accent'
+                } disabled:opacity-30`}
+                title={isRecording ? 'Stop recording' : 'Voice search'}
+              >
+                {isRecording ? <MicOff size={14} /> : <Mic size={14} />}
+              </button>
             </div>
             <button
               type="submit"
@@ -168,6 +187,22 @@ function Canvas() {
                       placeholder="e.g. Machine Learning, React, Finance..."
                       className="flex-1 bg-transparent text-white placeholder-white/30 outline-none text-sm"
                     />
+                    {isTranscribing && (
+                      <Loader2 size={16} className="text-cogni-accent animate-spin flex-shrink-0" />
+                    )}
+                    <button
+                      type="button"
+                      onClick={toggleRecording}
+                      disabled={isTranscribing}
+                      className={`flex-shrink-0 p-1 rounded-lg transition-all ${
+                        isRecording
+                          ? 'text-red-400 animate-pulse'
+                          : 'text-white/30 hover:text-cogni-accent'
+                      } disabled:opacity-30`}
+                      title={isRecording ? 'Stop recording' : 'Voice search'}
+                    >
+                      {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
+                    </button>
                   </div>
                   <button
                     type="submit"

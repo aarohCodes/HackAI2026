@@ -5,8 +5,9 @@ import { useStore } from '../store/useStore'
 import { api } from '../api/client'
 import {
   ArrowLeft, Sparkles, Play, Send, BookOpen, ExternalLink,
-  Globe, Brain, ChevronRight, CheckCircle, Lock, Loader2,
+  Globe, Brain, ChevronRight, CheckCircle, Lock, Loader2, Volume2, VolumeX,
 } from 'lucide-react'
+import { useTextToSpeech } from '../hooks/useTextToSpeech'
 
 export function ConceptPage() {
   const { nodeId } = useParams()
@@ -21,6 +22,10 @@ export function ConceptPage() {
   const [chatInput, setChatInput] = useState('')
   const [chatMessages, setChatMessages] = useState([])
   const [chatLoading, setChatLoading] = useState(false)
+
+  // Text-to-speech for AI explanation
+  const { isSpeaking: isSpeakingExplanation, isLoading: ttsLoadingExplanation, speak: speakExplanation, stop: stopExplanation } = useTextToSpeech()
+  const { isSpeaking: isSpeakingExample, isLoading: ttsLoadingExample, speak: speakExample, stop: stopExample } = useTextToSpeech()
 
   // Load node data + AI explanation + video
   useEffect(() => {
@@ -213,6 +218,25 @@ export function ConceptPage() {
               <div className="flex items-center gap-2 mb-3">
                 <Sparkles size={16} className="text-cogni-accent" />
                 <h2 className="font-display font-bold text-cogni-accent">AI Explanation</h2>
+                <button
+                  onClick={() => isSpeakingExplanation ? stopExplanation() : speakExplanation(explanation.explanation)}
+                  disabled={ttsLoadingExplanation}
+                  className={`ml-auto flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                    isSpeakingExplanation
+                      ? 'bg-red-500/15 text-red-400 hover:bg-red-500/25'
+                      : 'bg-cogni-accent/10 text-cogni-accent hover:bg-cogni-accent/20'
+                  } disabled:opacity-40`}
+                  title={isSpeakingExplanation ? 'Stop reading' : 'Read aloud'}
+                >
+                  {ttsLoadingExplanation ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : isSpeakingExplanation ? (
+                    <VolumeX size={14} />
+                  ) : (
+                    <Volume2 size={14} />
+                  )}
+                  {ttsLoadingExplanation ? 'Loading...' : isSpeakingExplanation ? 'Stop' : 'Listen'}
+                </button>
               </div>
               <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-4">
                 <p className="text-sm text-white/70 leading-relaxed whitespace-pre-line">
@@ -235,7 +259,28 @@ export function ConceptPage() {
 
                 {explanation.real_world_example && (
                   <div className="p-4 rounded-xl bg-cogni-accent/5 border border-cogni-accent/10">
-                    <p className="text-xs font-bold text-cogni-accent mb-1 uppercase tracking-wider">Real World Example</p>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs font-bold text-cogni-accent uppercase tracking-wider">Real World Example</p>
+                      <button
+                        onClick={() => isSpeakingExample ? stopExample() : speakExample(explanation.real_world_example)}
+                        disabled={ttsLoadingExample}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold transition-all ${
+                          isSpeakingExample
+                            ? 'bg-red-500/15 text-red-400 hover:bg-red-500/25'
+                            : 'bg-cogni-accent/10 text-cogni-accent hover:bg-cogni-accent/20'
+                        } disabled:opacity-40`}
+                        title={isSpeakingExample ? 'Stop reading' : 'Read aloud'}
+                      >
+                        {ttsLoadingExample ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : isSpeakingExample ? (
+                          <VolumeX size={12} />
+                        ) : (
+                          <Volume2 size={12} />
+                        )}
+                        {ttsLoadingExample ? 'Loading...' : isSpeakingExample ? 'Stop' : 'Listen'}
+                      </button>
+                    </div>
                     <p className="text-sm text-white/60">{explanation.real_world_example}</p>
                   </div>
                 )}

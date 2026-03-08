@@ -16,8 +16,21 @@ api.interceptors.request.use((config) => {
 
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
+  async (err) => {
     console.error('[API Error]', err.response?.status, err.response?.data || err.message)
+    // Auto-clear stale auth on 401 and retry guest auth once
+    if (err.response?.status === 401 && !err.config._retried) {
+      clearAuth()
+      try {
+        const res = await api.post('/auth/guest')
+        const { access_token, user } = res.data
+        setAuthToken(access_token)
+        storeUser(user)
+        err.config._retried = true
+        err.config.headers.Authorization = `Bearer ${access_token}`
+        return api(err.config)
+      } catch { /* fall through */ }
+    }
     return Promise.reject(err)
   }
 )
@@ -45,13 +58,24 @@ export function storeUser(user) {
 }
 
 /**
- * Auto-create a guest user if no token exists.
+ * Auto-create a guest user if no token exists or existing token is invalid.
  * Returns the user object.
  */
 export async function ensureGuestAuth() {
   const existing = getStoredUser()
   const token = localStorage.getItem('cognipath_token')
-  if (existing && token) return existing
+  if (existing && token) {
+    // Validate the token is still good
+    try {
+      const res = await api.get('/auth/me')
+      const user = res.data.user || res.data
+      storeUser(user)
+      return user
+    } catch {
+      // Token is stale — clear and fall through to create guest
+      clearAuth()
+    }
+  }
 
   const res = await api.post('/auth/guest')
   const { access_token, user } = res.data
