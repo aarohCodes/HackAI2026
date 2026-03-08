@@ -39,11 +39,15 @@ export function useCalendar() {
     setGenerating(true)
     setError(null)
     try {
-      const res = await api.post('/calendar/schedule', {
-        hours_per_week: hoursPerWeek,
-        hub_ids: hubIds,
-        week_start: weekStart,
-      })
+      const res = await api.post(
+        '/calendar/schedule',
+        {
+          hours_per_week: hoursPerWeek,
+          hub_ids: hubIds,
+          week_start: weekStart,
+        },
+        { timeout: 120000 }
+      )
       setStudyPlan({
         id: res.data.plan_id,
         sessions: res.data.sessions,
@@ -52,7 +56,9 @@ export function useCalendar() {
       })
       return res.data
     } catch (err) {
-      setError(err.response?.data?.detail || 'Failed to generate schedule')
+      const msg = err.response?.data?.detail
+      const detail = Array.isArray(msg) ? msg[0]?.msg || msg[0] : msg
+      setError(detail || err.message || 'Failed to generate schedule')
       return null
     } finally {
       setGenerating(false)

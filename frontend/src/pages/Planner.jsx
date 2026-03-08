@@ -84,9 +84,11 @@ export function PlannerPage() {
 
   const handleGenerate = async () => {
     const hubIds = selectedHubIds.length > 0 ? selectedHubIds : hubs.map((h) => h.id)
-    await generateSchedule(hoursPerWeek, hubIds, weekStart.toISOString())
-    // Refresh events to show newly created Google Calendar events
-    fetchEvents(weekStart.toISOString(), weekEnd.toISOString())
+    const result = await generateSchedule(hoursPerWeek, hubIds, weekStart.toISOString())
+    // generateSchedule already sets studyPlan from the response; don't call fetchPlan or it overwrites with Google (empty until step 2)
+    if (result && calendarConnected) {
+      await fetchEvents(weekStart.toISOString(), weekEnd.toISOString())
+    }
   }
 
   const toggleHub = (hubId) => {

@@ -41,6 +41,16 @@ function formatTime(dateStr) {
 }
 
 export function WeekView({ events = [], studySessions = [], weekStart }) {
+  // Don't show Google Calendar events that are our study sessions (avoid duplicate blocks)
+  const studyEventIds = useMemo(
+    () => new Set(studySessions.map((s) => s.google_event_id).filter(Boolean)),
+    [studySessions],
+  )
+  const otherEvents = useMemo(
+    () => events.filter((e) => !e.id || !studyEventIds.has(e.id)),
+    [events, studyEventIds],
+  )
+
   const hours = useMemo(() => {
     const h = []
     for (let i = HOURS_START; i <= HOURS_END; i++) {
@@ -113,8 +123,8 @@ export function WeekView({ events = [], studySessions = [], weekStart }) {
           </div>
         ))}
 
-        {/* Google Calendar events (teal) */}
-        {events.map((event, i) => {
+        {/* Google Calendar events (teal) - exclude study sessions we show in purple below */}
+        {otherEvents.map((event, i) => {
           if (event.all_day) return null
           const dayIdx = getDayIndex(event.start, weekStart)
           const pos = getEventPosition(event.start, event.end)

@@ -715,39 +715,8 @@ def generate_study_schedule(
     hours_per_week: float,
 ) -> dict | None:
     """Generate an optimal study schedule using Gemini, fitting sessions into free slots."""
-    prompt = f"""You are a learning schedule optimizer for CogniPath.
-
-Given the learner's free time slots and concepts that need study (sorted by priority),
-create an optimal study schedule that fits within their weekly time budget.
-
-FREE TIME SLOTS (available windows):
-{json.dumps(free_slots[:30], indent=2)}
-
-CONCEPTS TO STUDY (from selected hubs):
-{json.dumps(hub_concepts[:40], indent=2)}
-
-WEEKLY TIME BUDGET: {hours_per_week} hours
-
-Rules:
-- Only schedule sessions within the provided free slots
-- Each session should be 30-60 minutes
-- Total scheduled time must not exceed {hours_per_week} hours
-- Prioritize concepts with lower retention (more urgent)
-- Vary activity types: "review", "quiz", "feynman", "video"
-- Spread sessions across different days when possible
-- Include a brief reason for why each concept was scheduled
-
-Return ONLY valid JSON (no markdown fences):
-{{
-  "sessions": [
-    {{
-      "concept": "string",
-      "hub_id": "string or null",
-      "start_iso": "2026-03-09T09:00:00",
-      "end_iso": "2026-03-09T09:45:00",
-      "activity_type": "review|quiz|feynman|video",
-      "reason": "string"
-    }}
-  ]
-}}"""
+    # Smaller payload = faster response: compact JSON, cap slots/concepts
+    slots_json = json.dumps(free_slots[:20])
+    concepts_json = json.dumps(hub_concepts[:25])
+    prompt = f"""Schedule study into these free slots (use only these start/end times): {slots_json}. Concepts to schedule (priority order): {concepts_json}. Weekly budget: {hours_per_week} hours. Each session 30-60 min. Activity types: review, quiz, feynman, video. Return ONLY valid JSON, no markdown: {{"sessions":[{{"concept":"string","hub_id":null,"start_iso":"2026-03-10T09:00:00","end_iso":"2026-03-10T09:45:00","activity_type":"review","reason":"brief"}}]}}"""
     return _call_gemini(prompt)
