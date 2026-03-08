@@ -1,6 +1,33 @@
 import { useState, useCallback } from 'react'
 import { api } from '../api/client'
 
+const PLAN_STORAGE_PREFIX = 'cognipath_plan_'
+
+function getWeekKey(weekStart) {
+  if (!weekStart) return null
+  const str = typeof weekStart === 'string' ? weekStart : weekStart.toISOString?.()
+  return str ? str.slice(0, 10) : null
+}
+
+function getStoredPlan(weekKey) {
+  if (!weekKey) return null
+  try {
+    const raw = localStorage.getItem(PLAN_STORAGE_PREFIX + weekKey)
+    return raw ? JSON.parse(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function setStoredPlan(weekKey, plan) {
+  if (!weekKey || !plan) return
+  try {
+    localStorage.setItem(PLAN_STORAGE_PREFIX + weekKey, JSON.stringify(plan))
+  } catch {
+    // ignore quota / private mode
+  }
+}
+
 export function useCalendar() {
   const [events, setEvents] = useState([])
   const [studyPlan, setStudyPlan] = useState(null)
@@ -26,10 +53,18 @@ export function useCalendar() {
   }, [])
 
   const fetchPlan = useCallback(async (weekStart) => {
+    const weekKey = getWeekKey(weekStart)
+    const cached = getStoredPlan(weekKey)
+    if (cached?.sessions?.length) {
+      setStudyPlan(cached)
+      return
+    }
     try {
       const params = weekStart ? { week_start: weekStart } : {}
       const res = await api.get('/calendar/plan', { params })
-      setStudyPlan(res.data.plan)
+      const plan = res.data.plan
+      setStudyPlan(plan)
+      if (plan?.sessions?.length && weekKey) setStoredPlan(weekKey, plan)
     } catch {
       setStudyPlan(null)
     }
@@ -48,12 +83,15 @@ export function useCalendar() {
         },
         { timeout: 120000 }
       )
-      setStudyPlan({
+      const plan = {
         id: res.data.plan_id,
         sessions: res.data.sessions,
         hours_per_week: hoursPerWeek,
         hub_ids: hubIds,
-      })
+      }
+      setStudyPlan(plan)
+      const weekKey = getWeekKey(weekStart)
+      if (weekKey) setStoredPlan(weekKey, plan)
       return res.data
     } catch (err) {
       const msg = err.response?.data?.detail

@@ -1,11 +1,8 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-from typing import Optional
 from database.models import User, ConceptNode, KnowledgeEdge, NodeState
 from services.gemini_service import (
     generate_adaptive_quiz,
-    generate_scenario_challenge,
-    generate_concept_drill,
     generate_node_quiz,
     grade_open_answer,
 )
@@ -20,15 +17,6 @@ logger = logging.getLogger(__name__)
 class QuizGenerateRequest(BaseModel):
     concept_ids: list[str] = []
     difficulty: str = "mixed"
-
-
-class ScenarioRequest(BaseModel):
-    concept: str
-    node_id: Optional[str] = None
-
-
-class DrillRequest(BaseModel):
-    concept_ids: list[str] = []
 
 
 class GradeAnswerRequest(BaseModel):
@@ -203,47 +191,5 @@ async def generate_quiz_for_node(req: NodeQuizRequest, current_user: User = Depe
 
     if result.get("_fallback") and not result.get("questions"):
         raise HTTPException(status_code=503, detail="Quiz generation temporarily unavailable")
-
-    return result
-
-
-@router.post("/scenario/generate")
-async def generate_scenario(req: ScenarioRequest, current_user: User = Depends(get_current_user)):
-    """Generate a real-world scenario simulation for a specific concept."""
-    all_nodes = await ConceptNode.find(ConceptNode.user_id == current_user.id).to_list()
-    related = [n.concept for n in all_nodes if n.concept.lower() != req.concept.lower()][:8]
-
-    result = generate_scenario_challenge(
-        concept=req.concept,
-        user_background=current_user.background,
-        related_concepts=related,
-    )
-
-    if result.get("_fallback"):
-        raise HTTPException(status_code=503, detail="Scenario generation temporarily unavailable")
-
-    return result
-
-
-@router.post("/drill/generate")
-async def generate_drill(req: DrillRequest, current_user: User = Depends(get_current_user)):
-    """Generate rapid-fire drill questions targeting weak concepts."""
-    if req.concept_ids:
-        nodes = await _get_user_concepts(current_user.id, req.concept_ids)
-    else:
-        nodes = await _get_user_concepts(current_user.id, filter_weak=True)
-
-    if not nodes:
-        all_nodes = await ConceptNode.find(ConceptNode.user_id == current_user.id).to_list()
-        nodes = all_nodes[:10]
-
-    if not nodes:
-        raise HTTPException(status_code=400, detail="No concepts found for drilling.")
-
-    concepts = _serialize_concepts(nodes)
-    result = generate_concept_drill(concepts, current_user.background)
-
-    if result.get("_fallback"):
-        raise HTTPException(status_code=503, detail="Drill generation temporarily unavailable")
 
     return result
