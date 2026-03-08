@@ -5,3 +5,8 @@ python-dotenv
 google-genai
 pymongo
 httpx
+tavily-python
+google-api-python-client
+langchain-core
+langchain-google-genai
+langgraph
