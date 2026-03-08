@@ -49,7 +49,7 @@ async def _generate_graph_with_research(
 
     if web_context:
         logger.info("Got web research context (%d chars), using it for graph generation", len(web_context))
-        prompt = f"""You are initializing a personalized knowledge graph for a new learner on CogniPath.
+        prompt = f"""You are initializing a personalized knowledge graph for a new learner on pondr.
 
 LEARNER GOAL: {goal}
 LEARNER BACKGROUND: {background}

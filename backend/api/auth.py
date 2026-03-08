@@ -89,7 +89,7 @@ async def guest_login():
     guest_id = uuid.uuid4().hex[:8]
     user = User(
         name=f"Learner",
-        email=f"guest_{guest_id}@cognipath.local",
+        email=f"guest_{guest_id}@pondr.local",
         hashed_password="",
         goal="",
         background="",

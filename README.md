@@ -1,8 +1,8 @@
-# CogniPath
+# pondr
 
 **AI-Powered Adaptive Learning Platform**
 
-CogniPath maps your knowledge as a living graph, predicts what you're about to forget using machine learning, and deploys Google Gemini to keep you sharp — through Feynman challenges, Socratic debates, and precision YouTube snippets.
+pondr maps your knowledge as a living graph, predicts what you're about to forget using machine learning, and deploys Google Gemini to keep you sharp — through Feynman challenges, Socratic debates, and precision YouTube snippets.
 
 Built for **Dallas AI Hackathon 2026** — Data Science / ML Track.
 

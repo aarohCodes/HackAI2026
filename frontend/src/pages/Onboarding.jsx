@@ -3,13 +3,18 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useStore } from '../store/useStore'
 import { api, storeUser } from '../api/client'
-import { ArrowRight, Brain, BookOpen, Sparkles } from 'lucide-react'
+import { ArrowRight, Brain, BookOpen, Sparkles, Mic, MicOff, Loader2 } from 'lucide-react'
+import { useVoiceInput } from '../hooks/useVoiceInput'
 
 export function Onboarding() {
   const navigate = useNavigate()
   const { user, setUser, invalidateGraph } = useStore()
   const [priorHistory, setPriorHistory] = useState('')
   const [loading, setLoading] = useState(false)
+
+  const { isRecording, isTranscribing, toggleRecording, error: voiceError } = useVoiceInput(
+    (text) => setPriorHistory((prev) => (prev ? prev + ' ' + text : text))
+  )
 
   const goToCanvas = () => {
     navigate('/canvas', { replace: true })
@@ -116,13 +121,39 @@ export function Onboarding() {
             <label className="text-xs font-bold uppercase tracking-wider text-white/40 mb-2 flex items-center gap-2">
               <BookOpen size={12} className="text-cogni-teal" /> Your learning history (optional)
             </label>
-            <textarea
-              value={priorHistory}
-              onChange={(e) => setPriorHistory(e.target.value)}
-              placeholder="e.g. Completed CS50, built a few React apps, know Python and basic stats..."
-              rows={5}
-              className="w-full cogni-input resize-none mt-2"
-            />
+            <div className="relative mt-2">
+              <textarea
+                value={priorHistory}
+                onChange={(e) => setPriorHistory(e.target.value)}
+                placeholder="e.g. Completed CS50, built a few React apps, know Python and basic stats..."
+                rows={5}
+                className="w-full cogni-input resize-none pr-14"
+              />
+              <button
+                type="button"
+                onClick={toggleRecording}
+                disabled={isTranscribing}
+                className={`absolute right-3 top-3 p-2 rounded-lg transition-all ${
+                  isRecording
+                    ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 animate-pulse'
+                    : isTranscribing
+                      ? 'bg-cogni-accent/10 text-cogni-accent/50 cursor-wait'
+                      : 'bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/70'
+                }`}
+                title={isRecording ? 'Stop recording' : isTranscribing ? 'Transcribing...' : 'Voice input'}
+              >
+                {isTranscribing ? (
+                  <Loader2 size={18} className="animate-spin" />
+                ) : isRecording ? (
+                  <MicOff size={18} />
+                ) : (
+                  <Mic size={18} />
+                )}
+              </button>
+            </div>
+            {voiceError && (
+              <p className="text-red-400 text-xs mt-1">{voiceError}</p>
+            )}
 
             <div className="flex gap-3 mt-8">
               <button

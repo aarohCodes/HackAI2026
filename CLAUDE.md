@@ -1,8 +1,8 @@
-# CLAUDE.md — CogniPath Development Guide
+# CLAUDE.md — pondr Development Guide
 
 ## Project Overview
 
-CogniPath is an AI-powered adaptive learning platform for the Dallas AI Hackathon 2026. It uses a knowledge graph canvas (React Flow), ML-based knowledge decay prediction (XGBoost + Ebbinghaus curves), Google Gemini AI for personalized learning, and a YouTube snippet pipeline for targeted video learning.
+pondr is an AI-powered adaptive learning platform for the Dallas AI Hackathon 2026. It uses a knowledge graph canvas (React Flow), ML-based knowledge decay prediction (XGBoost + Ebbinghaus curves), Google Gemini AI for personalized learning, and a YouTube snippet pipeline for targeted video learning.
 
 **Hackathon Tracks**: Dallas AI + Data Science / ML
 
@@ -27,13 +27,13 @@ Frontend (React + Vite)  →  Backend (FastAPI)  →  MongoDB (Beanie ODM)
 ### Auth Flow
 1. User registers at `POST /api/auth/register` → gets JWT token + user object
 2. User logs in at `POST /api/auth/login` → gets JWT token + user object
-3. Token is stored in `localStorage` as `cognipath_token`
+3. Token is stored in `localStorage` as `pondr_token`
 4. All subsequent API calls include `Authorization: Bearer <token>` via Axios interceptor
 5. Backend extracts user from token via `get_current_user` dependency (`backend/api/deps.py`)
 6. If user has not onboarded (`goal` is empty), frontend routes to `/onboarding`
 7. Onboarding updates the existing user record (does NOT create a new one)
 8. On 401 response, frontend clears token and redirects to `/login`
-9. Demo user: `alex@cognipath.dev` / `demo1234` (created by seed script)
+9. Demo user: `alex@pondr.dev` / `demo1234` (created by seed script)
 
 ---
 
@@ -43,7 +43,7 @@ The `.env` file lives at the project root. See `example.env` for the template.
 
 Required variables:
 - `MONGO_DB_URI` — MongoDB connection string
-- `MONGO_DB_NAME` — Database name (default: `cognipath`)
+- `MONGO_DB_NAME` — Database name (default: `pondr`)
 - `GEMINI_API_KEY` — Google Gemini API key (for AI features)
 - `YOUTUBE_API_KEY` — YouTube Data API v3 key (separate from Gemini)
 - `SECRET_KEY` — App secret for JWT signing

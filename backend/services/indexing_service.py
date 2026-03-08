@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 MONGODB_URI = os.getenv("MONGO_DB_URI")
-MONGODB_DB = os.getenv("MONGO_DB_NAME", "cognipath")
+MONGODB_DB = os.getenv("MONGO_DB_NAME", "pondr")
 MONGODB_COLLECTION = os.getenv("MONGODB_EMBEDDING_COLLECTION", "embeddings")
 EMBEDDING_MODEL = "models/gemini-embedding-001"
 

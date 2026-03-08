@@ -1,7 +1,7 @@
 version: 3
 
 tunnels:
-  cognipath:
+  pondr:
     proto: http
     addr: 8000
     traffic_policy:

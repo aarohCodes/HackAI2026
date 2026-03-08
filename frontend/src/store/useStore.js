@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { getStoredUser, api, clearAuth } from '../api/client'
 
-const tokenFromStorage = () => typeof window !== 'undefined' ? localStorage.getItem('cognipath_token') : null
+const tokenFromStorage = () => typeof window !== 'undefined' ? localStorage.getItem('pondr_token') : null
 const initialUser = getStoredUser()
 const hasToken = !!tokenFromStorage()
 

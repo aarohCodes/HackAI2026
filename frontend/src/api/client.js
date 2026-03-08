@@ -7,7 +7,7 @@ export const api = axios.create({
 })
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('cognipath_token')
+  const token = localStorage.getItem('pondr_token')
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -38,17 +38,17 @@ api.interceptors.response.use(
 )
 
 export function setAuthToken(token) {
-  localStorage.setItem('cognipath_token', token)
+  localStorage.setItem('pondr_token', token)
 }
 
 export function clearAuth() {
-  localStorage.removeItem('cognipath_token')
-  localStorage.removeItem('cognipath_user')
+  localStorage.removeItem('pondr_token')
+  localStorage.removeItem('pondr_user')
 }
 
 export function getStoredUser() {
   try {
-    const raw = localStorage.getItem('cognipath_user')
+    const raw = localStorage.getItem('pondr_user')
     return raw ? JSON.parse(raw) : null
   } catch {
     return null
@@ -56,7 +56,7 @@ export function getStoredUser() {
 }
 
 export function storeUser(user) {
-  localStorage.setItem('cognipath_user', JSON.stringify(user))
+  localStorage.setItem('pondr_user', JSON.stringify(user))
 }
 
 /**
@@ -65,7 +65,7 @@ export function storeUser(user) {
  */
 export async function ensureGuestAuth() {
   const existing = getStoredUser()
-  const token = localStorage.getItem('cognipath_token')
+  const token = localStorage.getItem('pondr_token')
   if (existing && token) {
     // Validate the token is still good
     try {

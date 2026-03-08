@@ -83,7 +83,7 @@ def _call_gemini(prompt: str, retry_strict: bool = True) -> dict | None:
 def build_recommendation(
     user_profile: dict, decaying_nodes: list, recent_signals: list
 ) -> dict:
-    prompt = f"""You are a personalized learning coach AI inside CogniPath.
+    prompt = f"""You are a personalized learning coach AI inside pondr.
 
 USER PROFILE:
 - Goal: {user_profile['goal']}
@@ -207,7 +207,7 @@ Respond ONLY with valid JSON:
     return result
 
 
-ONBOARDING_PROMPT = """You are initializing a personalized knowledge graph for a new learner on CogniPath, an AI-powered adaptive learning platform.
+ONBOARDING_PROMPT = """You are initializing a personalized knowledge graph for a new learner on pondr, an AI-powered adaptive learning platform.
 
 LEARNER GOAL: {goal}
 LEARNER BACKGROUND: {background}
@@ -366,7 +366,7 @@ def _build_fallback_graph(goal: str, background: str, past_hub_topics: list | No
 
 def generate_adaptive_quiz(concepts: list[dict], user_background: str, difficulty: str = "mixed") -> dict:
     """Generate a NotebookLM-style adaptive quiz from the user's knowledge graph."""
-    prompt = f"""You are a world-class assessment designer for an adaptive learning platform called CogniPath.
+    prompt = f"""You are a world-class assessment designer for an adaptive learning platform called pondr.
 
 LEARNER BACKGROUND: {user_background}
 DIFFICULTY PREFERENCE: {difficulty}
@@ -460,7 +460,7 @@ Respond ONLY with valid JSON:
 
 def generate_concept_explanation(concept: str, user_background: str, user_goal: str) -> dict:
     """Generate a concise AI explanation of a concept tailored to the user."""
-    prompt = f"""You are an expert tutor on the CogniPath learning platform.
+    prompt = f"""You are an expert tutor on the pondr learning platform.
 
 CONCEPT: {concept}
 LEARNER BACKGROUND: {user_background}

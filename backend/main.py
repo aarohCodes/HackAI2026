@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="CogniPath API",
+    title="pondr API",
     version="1.0.0",
     description="AI-Powered Adaptive Learning Platform",
     lifespan=lifespan,
@@ -93,4 +93,4 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "service": "cognipath"}
+    return {"status": "ok", "service": "pondr"}

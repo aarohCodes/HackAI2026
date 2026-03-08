@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start ngrok tunnel with traffic policies for CogniPath API
+# Start ngrok tunnel with traffic policies for pondr API
 # Usage: ./start-ngrok.sh
 #
 # Prerequisites:
@@ -9,8 +9,8 @@
 
 set -e
 
-echo "Starting ngrok tunnel for CogniPath API (port 8000)..."
+echo "Starting ngrok tunnel for pondr API (port 8000)..."
 echo "Traffic policies: 30 req/min rate limit, 5MB body limit, GET/POST/PATCH/OPTIONS only"
 echo ""
 
-ngrok start --config ngrok.yml cognipath
+ngrok start --config ngrok.yml pondr

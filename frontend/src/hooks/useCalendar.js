@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { api } from '../api/client'
 
-const PLAN_STORAGE_PREFIX = 'cognipath_plan_'
+const PLAN_STORAGE_PREFIX = 'pondr_plan_'
 
 function getWeekKey(weekStart) {
   if (!weekStart) return null

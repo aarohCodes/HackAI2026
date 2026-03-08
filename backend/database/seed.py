@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 MONGO_URI = os.getenv("MONGO_DB_URI", "mongodb://localhost:27017")
-MONGO_DB = os.getenv("MONGO_DB_NAME", "cognipath")
+MONGO_DB = os.getenv("MONGO_DB_NAME", "pondr")
 
 CONCEPTS = [
     # GREEN (mastered)
@@ -100,7 +100,7 @@ async def seed():
     from services.auth_service import hash_password
     user = User(
         name="Alex Chen",
-        email="alex@cognipath.dev",
+        email="alex@pondr.dev",
         hashed_password=hash_password("demo1234"),
         goal="Become an ML Engineer capable of building and deploying production models",
         background="Strong Python skills, intermediate statistics, some linear algebra",

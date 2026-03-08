@@ -236,7 +236,7 @@ async def concept_chat(req: ChatRequest, current_user: User = Depends(get_curren
 
     conv_block = f"CONVERSATION SO FAR:\n{history_text}\n\n" if history_text else ""
 
-    prompt = f"""You are a helpful tutor on CogniPath. The learner is studying "{req.concept}".
+    prompt = f"""You are a helpful tutor on pondr. The learner is studying "{req.concept}".
 LEARNER BACKGROUND: {current_user.background or 'Not specified'}
 LEARNER GOAL: {current_user.goal or 'Not specified'}
 
