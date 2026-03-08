@@ -4,6 +4,11 @@ import { useStore } from './store/useStore'
 import { CanvasPage } from './pages/Canvas'
 import { ConceptPage } from './pages/ConceptPage'
 import { QuizPage } from './pages/QuizPage'
+import { Landing } from './pages/Landing'
+import { Login } from './pages/Login'
+import { Onboarding } from './pages/Onboarding'
+import { HubsPage } from './pages/Hubs'
+import { DashboardPage } from './pages/Dashboard'
 import { motion } from 'framer-motion'
 import { Brain } from 'lucide-react'
 
@@ -14,10 +19,20 @@ function LoadingScreen() {
         <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
           <Brain size={48} className="mx-auto text-cogni-accent" />
         </motion.div>
-        <p className="mt-4 text-white/50 font-semibold">Loading CogniPath...</p>
+        <p className="mt-4 text-white/50 font-semibold">Loading Pondr...</p>
       </motion.div>
     </div>
   )
+}
+
+function HomeRoute() {
+  return <Landing />
+}
+
+function RequireAuth({ children }) {
+  const user = useStore((s) => s.user)
+  if (!user) return <Navigate to="/login" replace />
+  return children
 }
 
 export default function App() {
@@ -33,10 +48,14 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<CanvasPage />} />
-        <Route path="/canvas" element={<CanvasPage />} />
-        <Route path="/learn/:nodeId" element={<ConceptPage />} />
-        <Route path="/assess/quiz" element={<QuizPage />} />
+        <Route path="/" element={<HomeRoute />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/onboarding" element={<RequireAuth><Onboarding /></RequireAuth>} />
+        <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
+        <Route path="/hubs" element={<RequireAuth><HubsPage /></RequireAuth>} />
+        <Route path="/canvas" element={<RequireAuth><CanvasPage /></RequireAuth>} />
+        <Route path="/learn/:nodeId" element={<RequireAuth><ConceptPage /></RequireAuth>} />
+        <Route path="/assess/quiz" element={<RequireAuth><QuizPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

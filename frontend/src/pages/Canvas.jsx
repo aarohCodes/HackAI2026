@@ -4,7 +4,7 @@ import ReactFlow, {
 } from 'reactflow'
 import 'reactflow/dist/style.css'
 import { useEffect, useCallback, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useStore } from '../store/useStore'
 import { Sidebar } from '../components/ui/Sidebar'
 import { ConceptNode } from '../components/canvas/ConceptNode'
@@ -15,7 +15,9 @@ const nodeTypes = { concept: ConceptNode }
 
 function Canvas() {
   const navigate = useNavigate()
-  const { user, sidebarOpen, fetchGraph, searchTopic, graphLoading, currentTopic } = useStore()
+  const [searchParams] = useSearchParams()
+  const hubIdFromUrl = searchParams.get('hub_id')
+  const { user, sidebarOpen, fetchGraph, searchTopic, fetchHubs, graphLoading, currentTopic, selectHub } = useStore()
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([])
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([])
   const [allNodes, setAllNodes] = useState([])
@@ -36,6 +38,7 @@ function Canvas() {
           retention: n.retention_rt,
           importance: n.complexity_tier,
           nodeId: n.id,
+          difficulty_label: n.difficulty_label,
         },
       }))
     )
@@ -56,10 +59,31 @@ function Canvas() {
 
   useEffect(() => {
     if (!user) return
-    fetchGraph().then((data) => {
-      if (data.nodes.length > 0) loadGraph(data)
-    }).catch((err) => console.error('Failed to load graph:', err))
-  }, [user])
+    if (hubIdFromUrl) selectHub(hubIdFromUrl)
+    let cancelled = false
+    const load = (retry = false) => {
+      fetchGraph(hubIdFromUrl || undefined, true)
+        .then((data) => {
+          if (cancelled) return
+          if (data.nodes.length > 0) {
+            loadGraph(data)
+            return
+          }
+          if (hubIdFromUrl && !retry) {
+            setTimeout(() => { if (!cancelled) load(true) }, 2500)
+          }
+        })
+        .catch((err) => {
+          if (cancelled) return
+          console.error('Failed to load graph:', err)
+          if (hubIdFromUrl && !retry) {
+            setTimeout(() => { if (!cancelled) load(true) }, 2500)
+          }
+        })
+    }
+    load()
+    return () => { cancelled = true }
+  }, [user, hubIdFromUrl])
 
   const handleSearch = async (e) => {
     e.preventDefault()
@@ -67,8 +91,11 @@ function Canvas() {
     setSearching(true)
     try {
       const data = await searchTopic(searchInput.trim())
-      if (data && data.nodes.length > 0) loadGraph(data)
+      if (data && data.nodes && data.nodes.length > 0) loadGraph(data)
+      if (data && data.hub_id) navigate(`/canvas?hub_id=${data.hub_id}`)
       setSearchInput('')
+      // Keep hubs list in store in sync so Hubs page shows the new hub
+      await fetchHubs()
     } catch (err) {
       console.error('Search failed:', err)
     }
@@ -228,7 +255,17 @@ function Canvas() {
                 </div>
               </div>
 
-              <div className="w-full h-full">
+              <div className="w-full h-full relative">
+                {/* Zone dividers: Beginner | Intermediate | Advanced (dotted vertical lines at 1/3 and 2/3) */}
+                <div className="absolute inset-0 pointer-events-none z-[1]">
+                  <div className="absolute top-0 bottom-0 w-0 border-l border-dashed border-white/20" style={{ left: '33.333%', borderLeftWidth: 2 }} />
+                  <div className="absolute top-0 bottom-0 w-0 border-l border-dashed border-white/20" style={{ left: '66.666%', borderLeftWidth: 2 }} />
+                  <div className="absolute left-0 right-0 top-2 flex justify-between text-[9px] font-bold uppercase tracking-wider text-white/40">
+                    <span className="w-1/3 text-center">Beginner</span>
+                    <span className="w-1/3 text-center">Intermediate</span>
+                    <span className="w-1/3 text-center">Advanced</span>
+                  </div>
+                </div>
                 <ReactFlowProvider>
                   <ReactFlow
                     nodes={rfNodes} edges={rfEdges}

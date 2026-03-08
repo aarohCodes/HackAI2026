@@ -234,11 +234,13 @@ async def concept_chat(req: ChatRequest, current_user: User = Depends(get_curren
     if req.history:
         history_text = "\n".join(f"{m['role']}: {m['content']}" for m in req.history[-6:])
 
+    conv_block = f"CONVERSATION SO FAR:\n{history_text}\n\n" if history_text else ""
+
     prompt = f"""You are a helpful tutor on CogniPath. The learner is studying "{req.concept}".
 LEARNER BACKGROUND: {current_user.background or 'Not specified'}
 LEARNER GOAL: {current_user.goal or 'Not specified'}
 
-{f'CONVERSATION SO FAR:\\n{history_text}\\n' if history_text else ''}
+{conv_block}
 LEARNER ASKS: {req.question}
 
 Answer clearly and concisely. If relevant, give a concrete example. Keep it under 200 words.

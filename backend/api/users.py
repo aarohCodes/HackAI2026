@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-from database.models import User, ConceptNode, KnowledgeEdge, NodeState
+from database.models import User, Hub, ConceptNode, KnowledgeEdge, NodeState
 from services.gemini_service import generate_onboarding_graph, _call_gemini
 from api.deps import get_current_user
 from beanie import PydanticObjectId
@@ -14,9 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 class OnboardRequest(BaseModel):
-    goal: str
-    background: str
+    """History-only onboarding: only prior_history is required (or send empty to skip)."""
     prior_history: Optional[str] = None
+    goal: Optional[str] = None
+    background: Optional[str] = None
     learner_type: str = "gradual"
 
 
@@ -36,8 +37,13 @@ async def _research_learning_path(goal: str, background: str) -> str:
     return ""
 
 
-async def _generate_graph_with_research(goal: str, background: str, prior_history: str) -> dict | None:
-    """Enhanced graph generation: web search for real roadmaps, then Gemini builds graph from that context."""
+async def _generate_graph_with_research(
+    goal: str, background: str, prior_history: str, past_hub_topics: Optional[list] = None
+) -> dict | None:
+    """Enhanced graph generation: web search for real roadmaps, then Gemini builds graph from that context. Uses prior_history and past_hub_topics to set difficulty per node."""
+    past_hub_topics = past_hub_topics or []
+    past_hubs_str = ", ".join(past_hub_topics[:30]) if past_hub_topics else "None yet"
+
     # Step 1: Research real learning paths via web search
     web_context = await _research_learning_path(goal, background)
 
@@ -48,6 +54,7 @@ async def _generate_graph_with_research(goal: str, background: str, prior_histor
 LEARNER GOAL: {goal}
 LEARNER BACKGROUND: {background}
 PRIOR LEARNING HISTORY: {prior_history or 'None provided'}
+PAST HUBS (topics this learner has already studied): {past_hubs_str}
 
 REAL-WORLD LEARNING ROADMAP RESEARCH (from web search):
 {web_context[:4000]}
@@ -56,19 +63,22 @@ Using the real-world roadmap above as reference, generate a knowledge graph of 1
 that maps the SPECIFIC journey from the learner's current knowledge to their goal.
 
 Rules:
-- Concepts the learner already knows based on their background -> state: 'green'
-- Concepts they partially know or have some exposure to -> state: 'yellow'
-- Concepts they need to learn to reach their goal -> state: 'red'
+- If PRIOR LEARNING HISTORY is empty or 'None' AND PAST HUBS is empty or 'None yet', treat the learner as a complete beginner: set EVERY node to state 'red' and difficulty_label 'hard'. Do not include green or yellow nodes.
+- Otherwise use PRIOR LEARNING HISTORY and PAST HUBS to decide, for THIS learner, whether each concept is easy / intermediate / hard. Set difficulty_label accordingly: "easy" (they likely know or have seen it), "intermediate" (partial exposure or related to past hubs), "hard" (new to them).
+- Concepts the learner already knows based on background/history -> state: 'green', difficulty_label: 'easy'
+- Concepts they partially know or have some exposure to -> state: 'yellow', difficulty_label: 'intermediate'
+- Concepts they need to learn to reach their goal -> state: 'red', difficulty_label: 'hard'
 - complexity_tier: 1=fundamental, 2=intermediate, 3=advanced
 - dependency_depth: how many prerequisite hops from the root concept
-- canvas_x, canvas_y: arrange as a left-to-right learning path,
-  x from 100 to 1600 spacing ~150-200px apart, y centered around 0 with +/-200 spread
+- Position nodes left-to-right by difficulty: beginner (easy) concepts at canvas_x 100-500, intermediate at canvas_x 500-1000, advanced (hard) at canvas_x 1000-1600. Use the learner's prior history and past hubs to decide each concept's difficulty and place it in the correct band.
+- canvas_y: centered around 0 with +/-200 spread within each band
 - edges: prerequisite edges from simpler to harder concepts
 - Include at least 3-4 green nodes (things they already know) as foundation
 - Include 3-5 yellow nodes (partially known)
 - Fill the rest with red nodes (need to learn) building toward the goal
 - Every concept name should be specific and descriptive (e.g., "Gradient Descent" not "Math")
 - Use REAL topic names from the roadmap research, not generic placeholders
+- Every node MUST include difficulty_label: "easy" | "intermediate" | "hard"
 
 Return ONLY valid JSON (no markdown fences, no extra text):
 {{
@@ -77,6 +87,7 @@ Return ONLY valid JSON (no markdown fences, no extra text):
       "concept": "string",
       "domain": "string",
       "state": "red|yellow|green",
+      "difficulty_label": "easy|intermediate|hard",
       "complexity_tier": 1,
       "dependency_depth": 0,
       "canvas_x": 0.0,
@@ -95,81 +106,37 @@ Return ONLY valid JSON (no markdown fences, no extra text):
 
     # Fallback to standard Gemini-only generation
     logger.info("Falling back to standard Gemini graph generation")
-    return generate_onboarding_graph(goal=goal, background=background, prior_history=prior_history)
+    return generate_onboarding_graph(goal=goal, background=background, prior_history=prior_history, past_hub_topics=past_hub_topics)
 
 
 @router.post("/onboard")
 async def onboard_user(req: OnboardRequest, current_user: User = Depends(get_current_user)):
-    """Complete onboarding for the authenticated user — sets goal/background and generates knowledge graph.
-    Uses web search + YouTube to build a research-backed knowledge graph."""
-    if current_user.goal:
-        raise HTTPException(status_code=400, detail="User has already onboarded")
+    """History-only onboarding: save the user's learning history. No graph is generated; first graph is created when they search a topic on the Hubs page."""
+    if current_user.has_onboarded:
+        return {
+            "user": {
+                "id": str(current_user.id),
+                "name": current_user.name,
+                "email": current_user.email,
+                "level": current_user.level,
+                "level_title": current_user.level_title,
+                "has_onboarded": True,
+                "goal": current_user.goal,
+                "background": current_user.background,
+            },
+        }
 
-    current_user.goal = req.goal
-    current_user.background = req.background
-    current_user.prior_history = req.prior_history
+    current_user.prior_history = (req.prior_history or "").strip() or None
     current_user.learner_type = req.learner_type
+    if req.goal is not None:
+        current_user.goal = req.goal
+    if req.background is not None:
+        current_user.background = req.background
+    current_user.has_onboarded = True
     await current_user.save()
 
-    logger.info("Generating onboarding graph for user %s — goal: %s", current_user.id, req.goal)
-
-    try:
-        graph_data = await _generate_graph_with_research(
-            goal=req.goal,
-            background=req.background,
-            prior_history=req.prior_history or "",
-        )
-    except Exception as exc:
-        logger.error("Onboarding graph generation crashed: %s", exc)
-        graph_data = None
-
-    nodes_created = []
-    edges_created = 0
-    concept_to_id = {}
-    is_fallback = False
-
-    if graph_data and "nodes" in graph_data and len(graph_data["nodes"]) > 0:
-        is_fallback = graph_data.get("_fallback", False)
-        for n in graph_data["nodes"]:
-            state_str = n.get("state", "red")
-            try:
-                state = NodeState(state_str)
-            except ValueError:
-                state = NodeState.RED
-
-            node = ConceptNode(
-                user_id=current_user.id,
-                concept=n["concept"],
-                domain=n.get("domain", "general"),
-                complexity_tier=n.get("complexity_tier", 1),
-                dependency_depth=n.get("dependency_depth", 0),
-                state=state,
-                mastery_score=1.0 if state == NodeState.GREEN else (0.5 if state == NodeState.YELLOW else 0.0),
-                retention_rt=1.0 if state == NodeState.GREEN else (0.7 if state == NodeState.YELLOW else 0.0),
-                canvas_x=n.get("canvas_x", 0),
-                canvas_y=n.get("canvas_y", 0),
-                created_at=datetime.utcnow(),
-            )
-            await node.insert()
-            nodes_created.append(node)
-            concept_to_id[n["concept"].lower()] = node.id
-
-        for e in graph_data.get("edges", []):
-            from_id = concept_to_id.get(e["from"].lower())
-            to_id = concept_to_id.get(e["to"].lower())
-            if from_id and to_id:
-                edge = KnowledgeEdge(
-                    user_id=current_user.id,
-                    from_node_id=from_id,
-                    to_node_id=to_id,
-                    edge_type=e.get("type", "prerequisite"),
-                )
-                await edge.insert()
-                edges_created += 1
-
-    logger.info("Onboarding complete for user %s: %d nodes, %d edges%s",
-                current_user.id, len(nodes_created), edges_created,
-                " (fallback)" if is_fallback else "")
+    logger.info("Onboarding complete for user %s (history-only, %d chars)",
+                current_user.id, len(current_user.prior_history or ""))
 
     return {
         "user": {
@@ -178,22 +145,25 @@ async def onboard_user(req: OnboardRequest, current_user: User = Depends(get_cur
             "email": current_user.email,
             "level": current_user.level,
             "level_title": current_user.level_title,
+            "has_onboarded": True,
+            "goal": current_user.goal,
+            "background": current_user.background,
         },
-        "nodes_created": len(nodes_created),
-        "is_fallback": is_fallback,
     }
 
 
 @router.post("/reset-onboarding")
 async def reset_onboarding(current_user: User = Depends(get_current_user)):
     """DEV ONLY: Clear the user's goal and delete all their nodes/edges so onboarding can be re-run."""
-    # Delete all nodes and edges for this user
+    # Delete all hubs, nodes and edges for this user
+    await Hub.find(Hub.user_id == current_user.id).delete()
     await ConceptNode.find(ConceptNode.user_id == current_user.id).delete()
     await KnowledgeEdge.find(KnowledgeEdge.user_id == current_user.id).delete()
 
     current_user.goal = ""
     current_user.background = ""
     current_user.prior_history = None
+    current_user.has_onboarded = False
     await current_user.save()
 
     logger.info("Reset onboarding for user %s", current_user.id)
@@ -209,7 +179,9 @@ async def get_user_profile(current_user: User = Depends(get_current_user)):
         "email": current_user.email,
         "goal": current_user.goal,
         "background": current_user.background,
+        "prior_history": current_user.prior_history,
         "learner_type": current_user.learner_type,
+        "has_onboarded": current_user.has_onboarded or bool(current_user.goal),
         "created_at": current_user.created_at.isoformat(),
     }
 

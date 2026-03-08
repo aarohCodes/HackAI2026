@@ -2,15 +2,22 @@ import { useStore } from '../../store/useStore'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  Brain, ChevronLeft, ChevronRight, Network,
+  Brain, ChevronLeft, ChevronRight, Network, LayoutGrid, LayoutDashboard, LogOut,
 } from 'lucide-react'
 
 export function Sidebar() {
-  const { sidebarOpen, toggleSidebar } = useStore()
+  const { sidebarOpen, toggleSidebar, user, signOut } = useStore()
   const navigate = useNavigate()
   const location = useLocation()
 
-  const isActive = location.pathname === '/' || location.pathname === '/canvas'
+  const handleSignOut = () => {
+    signOut()
+    navigate('/')
+  }
+
+  const isDashboardActive = location.pathname === '/dashboard'
+  const isCanvasActive = location.pathname === '/' || location.pathname === '/canvas'
+  const isHubsActive = location.pathname === '/hubs'
 
   return (
     <motion.aside
@@ -33,7 +40,7 @@ export function Sidebar() {
             className="cursor-pointer"
             onClick={() => navigate('/canvas')}
           >
-            <span className="font-display font-bold text-lg tracking-tight">CogniPath</span>
+            <span className="font-display font-bold text-lg tracking-tight">Pondr</span>
             <p className="text-[9px] font-bold uppercase tracking-wider text-cogni-teal -mt-0.5">Adaptive Learning</p>
           </motion.div>
         )}
@@ -42,10 +49,26 @@ export function Sidebar() {
       {/* Navigation */}
       <nav className="flex-1 px-2 mt-4 space-y-1">
         <button
+          onClick={() => navigate('/dashboard')}
+          className={`
+            w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer
+            ${isDashboardActive
+              ? 'text-white bg-cogni-accent/20 border border-cogni-accent/30'
+              : 'text-white/50 hover:text-white hover:bg-white/5 border border-transparent'}
+          `}
+        >
+          <LayoutDashboard size={20} className="flex-shrink-0" />
+          {sidebarOpen && (
+            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              Dashboard
+            </motion.span>
+          )}
+        </button>
+        <button
           onClick={() => navigate('/canvas')}
           className={`
             w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer
-            ${isActive
+            ${isCanvasActive
               ? 'text-white bg-cogni-accent/20 border border-cogni-accent/30'
               : 'text-white/50 hover:text-white hover:bg-white/5 border border-transparent'}
           `}
@@ -57,7 +80,44 @@ export function Sidebar() {
             </motion.span>
           )}
         </button>
+        <button
+          onClick={() => navigate('/hubs')}
+          className={`
+            w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer
+            ${isHubsActive
+              ? 'text-white bg-cogni-accent/20 border border-cogni-accent/30'
+              : 'text-white/50 hover:text-white hover:bg-white/5 border border-transparent'}
+          `}
+        >
+          <LayoutGrid size={20} className="flex-shrink-0" />
+          {sidebarOpen && (
+            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              Hubs
+            </motion.span>
+          )}
+        </button>
       </nav>
+
+      {user && (
+        <div className="px-2 pb-2 space-y-1">
+          {sidebarOpen && (
+            <p className="text-[10px] text-white/40 truncate px-3" title={user.email}>
+              {user.name || user.email}
+            </p>
+          )}
+          <button
+            onClick={handleSignOut}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-white/50 hover:text-white hover:bg-white/5 border border-transparent transition-all duration-200 cursor-pointer"
+          >
+            <LogOut size={20} className="flex-shrink-0" />
+            {sidebarOpen && (
+              <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                Sign out
+              </motion.span>
+            )}
+          </button>
+        </div>
+      )}
 
       <button
         onClick={toggleSidebar}

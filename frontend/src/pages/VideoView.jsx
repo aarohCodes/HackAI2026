@@ -135,7 +135,7 @@ export function VideoViewPage() {
             <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cogni-accent to-cogni-teal flex items-center justify-center">
               <Brain size={16} className="text-white" />
             </div>
-            <span className="font-display font-bold text-lg">CogniPath</span>
+            <span className="font-display font-bold text-lg">Pondr</span>
           </div>
           <div className="flex items-center gap-6 ml-4">
             {['Courses', 'My Library', 'Certifications'].map((tab) => (

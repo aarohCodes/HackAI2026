@@ -19,12 +19,25 @@ const MODE_ICONS = {
   struggle: '\uD83D\uDD25',
 }
 
+/** Difficulty label: prefer API difficulty_label, else derive from state (green=easy, yellow=intermediate, red=hard) */
+function getDifficulty(data) {
+  const raw = (data.difficulty_label || '').toLowerCase()
+  if (raw === 'easy') return { label: 'Easy', color: '#10B981' }
+  if (raw === 'intermediate') return { label: 'Intermediate', color: '#F59E0B' }
+  if (raw === 'hard') return { label: 'Hard', color: '#EF4444' }
+  const state = data.state
+  if (state === 'green') return { label: 'Easy', color: '#10B981' }
+  if (state === 'yellow') return { label: 'Intermediate', color: '#F59E0B' }
+  return { label: 'Hard', color: '#EF4444' }
+}
+
 export const ConceptNode = memo(({ data, selected }) => {
   const { setLearningMode, setActiveRecommendation } = useStore()
   const config = STATE_CONFIG[data.state] || STATE_CONFIG.red
   const isFading = data.state === 'fading'
   const isGlow = data.state === 'glow'
   const size = 80 + (data.importance || 0) * 25
+  const difficulty = getDifficulty(data)
 
   const handleClick = () => {
     if (data.recommendation) {
@@ -76,6 +89,24 @@ export const ConceptNode = memo(({ data, selected }) => {
           position: 'relative',
         }}
       >
+        {difficulty && (
+          <span
+            style={{
+              position: 'absolute',
+              top: 2,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              fontSize: 7,
+              color: difficulty.color,
+              fontWeight: 700,
+              letterSpacing: '0.03em',
+              textTransform: 'uppercase',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {difficulty.label}
+          </span>
+        )}
         <span
           style={{
             fontSize: size < 90 ? 9 : 11,
@@ -86,6 +117,7 @@ export const ConceptNode = memo(({ data, selected }) => {
             maxWidth: size - 20,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
+            marginTop: difficulty ? 8 : 0,
           }}
         >
           {data.concept}

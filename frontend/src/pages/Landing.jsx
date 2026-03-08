@@ -1,6 +1,9 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { Zap, Brain, BarChart3, ArrowRight, Globe, Settings } from 'lucide-react'
+
+const LANDING_SEARCH_KEY = 'pondr_landing_search'
 
 const fadeUp = (delay = 0) => ({
   initial: { y: 30, opacity: 0 },
@@ -10,6 +13,17 @@ const fadeUp = (delay = 0) => ({
 
 export function Landing() {
   const navigate = useNavigate()
+  const [heroSearch, setHeroSearch] = useState('')
+
+  const handleHeroSearch = (e) => {
+    e?.preventDefault()
+    if (heroSearch.trim()) {
+      try {
+        sessionStorage.setItem(LANDING_SEARCH_KEY, heroSearch.trim())
+      } catch (_) {}
+    }
+    navigate('/login')
+  }
 
   return (
     <div className="min-h-screen bg-cogni-bg text-white overflow-x-hidden">
@@ -34,7 +48,7 @@ export function Landing() {
           <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cogni-accent to-cogni-teal flex items-center justify-center">
             <Brain size={20} className="text-white" />
           </div>
-          <span className="font-display font-bold text-xl tracking-tight">CogniPath</span>
+          <span className="font-display font-bold text-xl tracking-tight">Pondr</span>
         </div>
         <div className="flex items-center gap-8">
           <a href="#features" className="text-sm text-white/60 hover:text-white transition-colors">Features</a>
@@ -59,7 +73,7 @@ export function Landing() {
         <motion.h1 {...fadeUp(0.2)} className="font-display font-extrabold text-6xl md:text-7xl leading-[1.05] mt-8 max-w-3xl mx-auto">
           Master Any Skill with{' '}
           <span className="bg-gradient-to-r from-cogni-accent via-cogni-accent-light to-cogni-teal bg-clip-text text-transparent">
-            CogniPath
+            Pondr
           </span>
         </motion.h1>
 
@@ -69,25 +83,27 @@ export function Landing() {
         </motion.p>
 
         {/* Search bar */}
-        <motion.div {...fadeUp(0.45)} className="mt-10 max-w-xl mx-auto">
+        <motion.form {...fadeUp(0.45)} onSubmit={handleHeroSearch} className="mt-10 max-w-xl mx-auto">
           <div className="flex items-center bg-cogni-card border border-cogni-border rounded-2xl px-5 py-3 gap-3 shadow-xl shadow-black/20">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/30 flex-shrink-0">
               <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
             </svg>
             <input
               type="text"
+              value={heroSearch}
+              onChange={(e) => setHeroSearch(e.target.value)}
               placeholder="What do you want to master today?"
               className="flex-1 bg-transparent text-white placeholder-white/30 outline-none text-sm"
               onFocus={() => navigate('/login')}
             />
             <button
-              onClick={() => navigate('/login')}
+              type="submit"
               className="flex items-center gap-2 px-5 py-2 rounded-xl bg-cogni-accent hover:bg-cogni-accent-light text-white text-sm font-semibold transition-all"
             >
               Search <ArrowRight size={14} />
             </button>
           </div>
-        </motion.div>
+        </motion.form>
 
         {/* Tags */}
         <motion.div {...fadeUp(0.55)} className="flex items-center justify-center gap-6 mt-6">
@@ -112,7 +128,7 @@ export function Landing() {
             The Future of Learning
           </h2>
           <p className="text-white/50 mt-4 max-w-lg text-lg">
-            CogniPath utilizes cutting-edge methodology to accelerate your mastery of
+            Pondr utilizes cutting-edge methodology to accelerate your mastery of
             complex subjects through bio-adaptive algorithms.
           </p>
         </motion.div>
@@ -197,7 +213,7 @@ export function Landing() {
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cogni-accent to-cogni-teal flex items-center justify-center">
               <Brain size={14} className="text-white" />
             </div>
-            <span className="font-display font-bold text-sm">CogniPath</span>
+            <span className="font-display font-bold text-sm">Pondr</span>
           </div>
           <div className="flex items-center gap-6 text-xs text-white/30">
             <span>Privacy Policy</span>
@@ -211,7 +227,7 @@ export function Landing() {
           </div>
         </div>
         <p className="text-center text-[11px] text-white/20 mt-6">
-          &copy; 2026 CogniPath AI. All rights reserved. Powered by Neural Pathway algorithms.
+          &copy; 2026 Pondr. All rights reserved. Powered by Neural Pathway algorithms.
         </p>
       </footer>
     </div>

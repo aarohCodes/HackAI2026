@@ -58,6 +58,7 @@ class User(Document):
     background: str = ""
     prior_history: Optional[str] = None
     learner_type: str = "gradual"
+    has_onboarded: bool = False
 
     # Gamification
     xp: int = 0
@@ -77,8 +78,22 @@ class User(Document):
         indexes = ["email"]
 
 
+class Hub(Document):
+    """A topic/hub the user has searched; each hub has its own knowledge graph."""
+    user_id: PydanticObjectId
+    topic: str
+    title: str = ""
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_accessed_at: Optional[datetime] = None
+
+    class Settings:
+        name = "hubs"
+        indexes = ["user_id"]
+
+
 class ConceptNode(Document):
     user_id: PydanticObjectId
+    hub_id: Optional[PydanticObjectId] = None
     concept: str
     domain: str
     complexity_tier: int = 1
@@ -92,11 +107,12 @@ class ConceptNode(Document):
     review_count: int = 0
     canvas_x: float = 0.0
     canvas_y: float = 0.0
+    difficulty_label: Optional[str] = None  # "easy" | "intermediate" | "hard" for this learner
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:
         name = "concept_nodes"
-        indexes = ["user_id", "concept"]
+        indexes = ["user_id", "concept", "hub_id"]
 
 
 class LearningEvent(Document):
@@ -138,13 +154,14 @@ class Recommendation(Document):
 
 class KnowledgeEdge(Document):
     user_id: PydanticObjectId
+    hub_id: Optional[PydanticObjectId] = None
     from_node_id: PydanticObjectId
     to_node_id: PydanticObjectId
     edge_type: str = "prerequisite"
 
     class Settings:
         name = "knowledge_edges"
-        indexes = ["user_id"]
+        indexes = ["user_id", "hub_id"]
 
 
 class Achievement(Document):
@@ -175,6 +192,7 @@ class GeminiRateLimit(Document):
 # All document models for init_beanie registration
 ALL_MODELS = [
     User,
+    Hub,
     ConceptNode,
     LearningEvent,
     Recommendation,

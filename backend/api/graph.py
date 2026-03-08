@@ -3,16 +3,26 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
 from database.models import (
-    User, ConceptNode, KnowledgeEdge, LearningEvent,
+    User, Hub, ConceptNode, KnowledgeEdge, LearningEvent,
     Recommendation, NodeState, CanvasSnapshot, NodeSnapshot,
 )
 from services.gemini_service import generate_topic_nodes, generate_concept_explanation
+from services.graph_service import get_learning_path_progress
 from api.deps import get_current_user
 from beanie import PydanticObjectId
 import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _state_to_difficulty(state) -> str:
+    """Map node state to difficulty label for display."""
+    if state == NodeState.GREEN:
+        return "easy"
+    if state == NodeState.YELLOW:
+        return "intermediate"
+    return "hard"
 
 
 class EventRequest(BaseModel):
@@ -32,10 +42,51 @@ class PositionUpdate(BaseModel):
 
 
 @router.get("/canvas")
-async def get_canvas_state(current_user: User = Depends(get_current_user)):
+async def get_canvas_state(
+    hub_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+):
     uid = current_user.id
-    nodes = await ConceptNode.find(ConceptNode.user_id == uid).to_list()
-    edges = await KnowledgeEdge.find(KnowledgeEdge.user_id == uid).to_list()
+    hub_oid = PydanticObjectId(hub_id) if hub_id else None
+
+    if hub_oid is not None:
+        # Return nodes/edges for this hub only
+        nodes = await ConceptNode.find(
+            ConceptNode.user_id == uid,
+            ConceptNode.hub_id == hub_oid,
+        ).to_list()
+        edges = await KnowledgeEdge.find(
+            KnowledgeEdge.user_id == uid,
+            KnowledgeEdge.hub_id == hub_oid,
+        ).to_list()
+        # Update last_accessed_at for this hub
+        hub = await Hub.get(hub_oid)
+        if hub and hub.user_id == uid:
+            hub.last_accessed_at = datetime.utcnow()
+            await hub.save()
+    else:
+        # Default: most recently accessed hub, or legacy nodes (hub_id is null)
+        hubs = await Hub.find(Hub.user_id == uid).sort("-last_accessed_at").limit(1).to_list()
+        if hubs:
+            hub_oid = hubs[0].id
+            nodes = await ConceptNode.find(
+                ConceptNode.user_id == uid,
+                ConceptNode.hub_id == hub_oid,
+            ).to_list()
+            edges = await KnowledgeEdge.find(
+                KnowledgeEdge.user_id == uid,
+                KnowledgeEdge.hub_id == hub_oid,
+            ).to_list()
+        else:
+            # Legacy: nodes/edges without hub_id
+            nodes = await ConceptNode.find(
+                ConceptNode.user_id == uid,
+                ConceptNode.hub_id == None,
+            ).to_list()
+            edges = await KnowledgeEdge.find(
+                KnowledgeEdge.user_id == uid,
+                KnowledgeEdge.hub_id == None,
+            ).to_list()
 
     node_recs = {}
     for node in nodes:
@@ -72,6 +123,7 @@ async def get_canvas_state(current_user: User = Depends(get_current_user)):
                 "review_count": n.review_count,
                 "canvas_x": n.canvas_x,
                 "canvas_y": n.canvas_y,
+                "difficulty_label": getattr(n, "difficulty_label", None) or _state_to_difficulty(n.state),
                 "active_recommendation": node_recs.get(str(n.id)),
             }
             for n in nodes
@@ -139,30 +191,91 @@ class SearchTopicRequest(BaseModel):
     background: str = ""
 
 
+def _difficulty_label_from_nodes(nodes: list) -> str:
+    """Compute aggregate difficulty for a hub from its nodes (state: green=easy, yellow=intermediate, red=hard)."""
+    if not nodes:
+        return "intermediate"
+    green = sum(1 for n in nodes if n.state.value == "green")
+    yellow = sum(1 for n in nodes if n.state.value == "yellow")
+    red = sum(1 for n in nodes if n.state.value == "red")
+    total = len(nodes)
+    if green >= total * 0.6:
+        return "easy"
+    if red >= total * 0.6:
+        return "hard"
+    return "intermediate"
+
+
+@router.get("/hubs")
+async def list_hubs(current_user: User = Depends(get_current_user)):
+    """List all hubs for the current user with optional mastery and difficulty."""
+    uid = current_user.id
+    hubs = await Hub.find(Hub.user_id == uid).sort("-last_accessed_at").to_list()
+    result = []
+    for hub in hubs:
+        nodes = await ConceptNode.find(
+            ConceptNode.user_id == uid,
+            ConceptNode.hub_id == hub.id,
+        ).to_list()
+        total = len(nodes)
+        mastery = 0
+        if total > 0:
+            mastery = round(sum(n.retention_rt for n in nodes) / total * 100)
+        difficulty = _difficulty_label_from_nodes(nodes)
+        result.append({
+            "id": str(hub.id),
+            "topic": hub.topic,
+            "title": hub.title or hub.topic,
+            "created_at": hub.created_at.isoformat() if hub.created_at else None,
+            "last_accessed_at": hub.last_accessed_at.isoformat() if hub.last_accessed_at else None,
+            "mastery": mastery,
+            "difficulty_label": difficulty,
+        })
+    return {"hubs": result}
+
+
+@router.get("/progress")
+async def get_progress(current_user: User = Depends(get_current_user)):
+    """Overall learning path progress across all hubs (total, mastered, in_progress, not_started, mastery_pct)."""
+    data = await get_learning_path_progress(current_user.id)
+    return data
+
+
 @router.post("/search")
 async def search_topic(req: SearchTopicRequest, current_user: User = Depends(get_current_user)):
-    """Reset the user's graph and generate a new one for the searched topic."""
+    """Create a new hub and generate its knowledge graph. Uses user's prior_history and past hubs for personalization."""
     uid = current_user.id
 
-    # Delete all existing nodes and edges
-    await ConceptNode.find(ConceptNode.user_id == uid).delete()
-    await KnowledgeEdge.find(KnowledgeEdge.user_id == uid).delete()
+    # Past hub topics (so the model can set easy/intermediate/hard based on what they've already studied)
+    existing_hubs = await Hub.find(Hub.user_id == uid).to_list()
+    past_hub_topics = [h.topic for h in existing_hubs if h.topic]
 
-    # Update user goal to the searched topic
+    # Create hub first
+    hub = Hub(
+        user_id=uid,
+        topic=req.topic,
+        title=req.topic,
+        created_at=datetime.utcnow(),
+    )
+    await hub.insert()
+
+    # Update user goal to the searched topic (for context in other APIs)
     current_user.goal = req.topic
     if req.background:
         current_user.background = req.background
     await current_user.save()
 
-    # Generate graph using web-search-enhanced generation
+    # Generate graph using user's prior_history and past hub topics
     from api.users import _generate_graph_with_research
     graph_data = await _generate_graph_with_research(
         goal=req.topic,
         background=current_user.background or "",
-        prior_history="",
+        prior_history=current_user.prior_history or "",
+        past_hub_topics=past_hub_topics,
     )
 
     if not graph_data or "nodes" not in graph_data or len(graph_data["nodes"]) == 0:
+        await hub.delete()
         raise HTTPException(status_code=502, detail="Failed to generate knowledge graph")
 
     nodes_created = []
@@ -175,8 +288,12 @@ async def search_topic(req: SearchTopicRequest, current_user: User = Depends(get
         except ValueError:
             state = NodeState.RED
 
+        diff_label = (n.get("difficulty_label") or "").strip().lower()
+        if diff_label not in ("easy", "intermediate", "hard"):
+            diff_label = _state_to_difficulty(state)
         node = ConceptNode(
             user_id=uid,
+            hub_id=hub.id,
             concept=n["concept"],
             domain=n.get("domain", "general"),
             complexity_tier=n.get("complexity_tier", 1),
@@ -186,6 +303,7 @@ async def search_topic(req: SearchTopicRequest, current_user: User = Depends(get
             retention_rt=1.0 if state == NodeState.GREEN else (0.7 if state == NodeState.YELLOW else 0.0),
             canvas_x=n.get("canvas_x", 0),
             canvas_y=n.get("canvas_y", 0),
+            difficulty_label=diff_label or None,
             created_at=datetime.utcnow(),
         )
         await node.insert()
@@ -199,6 +317,7 @@ async def search_topic(req: SearchTopicRequest, current_user: User = Depends(get
         if from_id and to_id:
             edge = KnowledgeEdge(
                 user_id=uid,
+                hub_id=hub.id,
                 from_node_id=from_id,
                 to_node_id=to_id,
                 edge_type=e.get("type", "prerequisite"),
@@ -206,9 +325,10 @@ async def search_topic(req: SearchTopicRequest, current_user: User = Depends(get
             await edge.insert()
             edges_created += 1
 
-    logger.info("Search graph for '%s': %d nodes, %d edges", req.topic, len(nodes_created), edges_created)
+    logger.info("Created hub '%s': %d nodes, %d edges", req.topic, len(nodes_created), edges_created)
 
     return {
+        "hub_id": str(hub.id),
         "topic": req.topic,
         "nodes_created": len(nodes_created),
     }

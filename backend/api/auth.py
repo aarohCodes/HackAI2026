@@ -28,7 +28,7 @@ def _user_response(user: User) -> dict:
         "level_title": user.level_title,
         "goal": user.goal,
         "background": user.background,
-        "has_onboarded": bool(user.goal),
+        "has_onboarded": user.has_onboarded or bool(user.goal),
     }
 
 

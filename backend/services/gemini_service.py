@@ -212,24 +212,28 @@ ONBOARDING_PROMPT = """You are initializing a personalized knowledge graph for a
 LEARNER GOAL: {goal}
 LEARNER BACKGROUND: {background}
 PRIOR LEARNING HISTORY: {prior_history}
+PAST HUBS (topics this learner has already studied): {past_hub_topics}
 
 Generate a knowledge graph of 15-25 concepts that maps the SPECIFIC journey
 from their current knowledge to their goal. The concepts MUST be tailored to what 
 the learner actually wants to learn — do NOT use generic placeholder concepts.
 
 Rules:
-- Concepts the learner already knows based on their background -> state: 'green'
-- Concepts they partially know or have some exposure to -> state: 'yellow'
-- Concepts they need to learn to reach their goal -> state: 'red'
+- If PRIOR LEARNING HISTORY is empty or 'None' AND PAST HUBS is empty or 'None yet', treat the learner as a complete beginner: set EVERY node to state 'red' and difficulty_label 'hard'. Do not include green or yellow nodes.
+- Otherwise use PRIOR LEARNING HISTORY and PAST HUBS to decide, for THIS learner, whether each concept is easy / intermediate / hard. Set difficulty_label: "easy" (they likely know or have seen it), "intermediate" (partial exposure or related to past hubs), "hard" (new to them).
+- Concepts the learner already knows based on background/history -> state: 'green', difficulty_label: 'easy'
+- Concepts they partially know or have some exposure to -> state: 'yellow', difficulty_label: 'intermediate'
+- Concepts they need to learn to reach their goal -> state: 'red', difficulty_label: 'hard'
 - complexity_tier: 1=fundamental, 2=intermediate, 3=advanced
 - dependency_depth: how many prerequisite hops from the root concept
-- canvas_x, canvas_y: arrange as a left-to-right learning path,
-  x from 100 to 1600 spacing ~150-200px apart, y centered around 0 with +/-200 spread
+- Position nodes left-to-right by difficulty: beginner (easy) concepts at canvas_x 100-500, intermediate at canvas_x 500-1000, advanced (hard) at canvas_x 1000-1600. Use the learner's prior history and past hubs to decide each concept's difficulty and place it in the correct band.
+- canvas_y: centered around 0 with +/-200 spread within each band
 - edges: prerequisite edges from simpler to harder concepts
 - Include at least 3-4 green nodes (things they already know) as foundation
 - Include 3-5 yellow nodes (partially known)
 - Fill the rest with red nodes (need to learn) building toward the goal
 - Every concept name should be specific and descriptive (e.g., "Gradient Descent" not "Math")
+- Every node MUST include difficulty_label: "easy" | "intermediate" | "hard"
 
 Return ONLY valid JSON (no markdown fences, no extra text):
 {{
@@ -238,6 +242,7 @@ Return ONLY valid JSON (no markdown fences, no extra text):
       "concept": "string",
       "domain": "string",
       "state": "red|yellow|green",
+      "difficulty_label": "easy|intermediate|hard",
       "complexity_tier": 1,
       "dependency_depth": 0,
       "canvas_x": 0.0,
@@ -251,11 +256,16 @@ Return ONLY valid JSON (no markdown fences, no extra text):
 
 
 def generate_onboarding_graph(
-    goal: str, background: str, prior_history: str = ""
+    goal: str, background: str, prior_history: str = "", past_hub_topics: list | None = None
 ) -> dict | None:
-    """Generate a personalized knowledge graph via Gemini. Returns graph data or a fallback."""
+    """Generate a personalized knowledge graph via Gemini. Returns graph data or a fallback. Uses prior_history and past_hub_topics for difficulty per node."""
+    past = past_hub_topics or []
+    past_str = ", ".join(past[:30]) if past else "None yet"
     prompt = ONBOARDING_PROMPT.format(
-        goal=goal, background=background, prior_history=prior_history or "None provided"
+        goal=goal,
+        background=background,
+        prior_history=prior_history or "None provided",
+        past_hub_topics=past_str,
     )
 
     result = _call_gemini(prompt)
@@ -266,13 +276,15 @@ def generate_onboarding_graph(
         return result
 
     logger.warning("Gemini onboarding returned insufficient data, generating fallback graph for goal: %s", goal)
-    return _build_fallback_graph(goal, background)
+    return _build_fallback_graph(goal, background, past_hub_topics=past, prior_history=prior_history)
 
 
-def _build_fallback_graph(goal: str, background: str) -> dict:
-    """Build a reasonable starter graph when Gemini fails, based on the user's actual goal."""
+def _build_fallback_graph(goal: str, background: str, past_hub_topics: list | None = None, prior_history: str | None = None) -> dict:
+    """Build a reasonable starter graph when Gemini fails. If no prior_history and no past_hub_topics, all nodes are red (new user)."""
     goal_lower = goal.lower()
-    bg_lower = background.lower()
+    past = past_hub_topics or []
+    history_empty = not (prior_history or "").strip() or (prior_history or "").strip().lower() == "none provided"
+    new_user = history_empty and len(past) == 0
 
     domain = "general"
     if any(kw in goal_lower for kw in ["ml", "machine learning", "ai", "deep learning", "data science"]):
@@ -286,28 +298,56 @@ def _build_fallback_graph(goal: str, background: str) -> dict:
     elif any(kw in goal_lower for kw in ["finance", "trading", "accounting", "financial"]):
         domain = "finance"
 
-    nodes = [
-        {"concept": f"Foundations of {goal}", "domain": domain, "state": "green" if background else "yellow",
-         "complexity_tier": 1, "dependency_depth": 0, "canvas_x": 100, "canvas_y": 0},
-        {"concept": f"Core Principles", "domain": domain, "state": "yellow",
-         "complexity_tier": 1, "dependency_depth": 0, "canvas_x": 100, "canvas_y": -120},
-        {"concept": f"Key Terminology", "domain": domain, "state": "green",
-         "complexity_tier": 1, "dependency_depth": 0, "canvas_x": 100, "canvas_y": 120},
-        {"concept": f"Intermediate {goal} Skills", "domain": domain, "state": "yellow",
-         "complexity_tier": 2, "dependency_depth": 1, "canvas_x": 400, "canvas_y": -60},
-        {"concept": f"Practical Applications", "domain": domain, "state": "red",
-         "complexity_tier": 2, "dependency_depth": 1, "canvas_x": 400, "canvas_y": 60},
-        {"concept": f"Problem Solving in {goal}", "domain": domain, "state": "red",
-         "complexity_tier": 2, "dependency_depth": 2, "canvas_x": 700, "canvas_y": -80},
-        {"concept": f"Tools & Frameworks", "domain": domain, "state": "red",
-         "complexity_tier": 2, "dependency_depth": 2, "canvas_x": 700, "canvas_y": 80},
-        {"concept": f"Advanced {goal} Concepts", "domain": domain, "state": "red",
-         "complexity_tier": 3, "dependency_depth": 3, "canvas_x": 1000, "canvas_y": -60},
-        {"concept": f"Real-World Projects", "domain": domain, "state": "red",
-         "complexity_tier": 3, "dependency_depth": 3, "canvas_x": 1000, "canvas_y": 60},
-        {"concept": f"Mastery & Portfolio", "domain": domain, "state": "red",
-         "complexity_tier": 3, "dependency_depth": 4, "canvas_x": 1300, "canvas_y": 0},
-    ]
+    def _dl(s: str) -> str:
+        return "easy" if s == "green" else ("intermediate" if s == "yellow" else "hard")
+
+    if new_user:
+        # All red, all hard — learner has not started
+        nodes = [
+            {"concept": f"Foundations of {goal}", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 1, "dependency_depth": 0, "canvas_x": 100, "canvas_y": 0},
+            {"concept": f"Core Principles", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 1, "dependency_depth": 0, "canvas_x": 100, "canvas_y": -120},
+            {"concept": f"Key Terminology", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 1, "dependency_depth": 0, "canvas_x": 100, "canvas_y": 120},
+            {"concept": f"Intermediate {goal} Skills", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 2, "dependency_depth": 1, "canvas_x": 400, "canvas_y": -60},
+            {"concept": f"Practical Applications", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 2, "dependency_depth": 1, "canvas_x": 400, "canvas_y": 60},
+            {"concept": f"Problem Solving in {goal}", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 2, "dependency_depth": 2, "canvas_x": 700, "canvas_y": -80},
+            {"concept": f"Tools & Frameworks", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 2, "dependency_depth": 2, "canvas_x": 700, "canvas_y": 80},
+            {"concept": f"Advanced {goal} Concepts", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 3, "dependency_depth": 3, "canvas_x": 1000, "canvas_y": -60},
+            {"concept": f"Real-World Projects", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 3, "dependency_depth": 3, "canvas_x": 1000, "canvas_y": 60},
+            {"concept": f"Mastery & Portfolio", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 3, "dependency_depth": 4, "canvas_x": 1300, "canvas_y": 0},
+        ]
+    else:
+        nodes = [
+            {"concept": f"Foundations of {goal}", "domain": domain, "state": "green" if background else "yellow", "difficulty_label": _dl("green" if background else "yellow"),
+             "complexity_tier": 1, "dependency_depth": 0, "canvas_x": 100, "canvas_y": 0},
+            {"concept": f"Core Principles", "domain": domain, "state": "yellow", "difficulty_label": "intermediate",
+             "complexity_tier": 1, "dependency_depth": 0, "canvas_x": 100, "canvas_y": -120},
+            {"concept": f"Key Terminology", "domain": domain, "state": "green", "difficulty_label": "easy",
+             "complexity_tier": 1, "dependency_depth": 0, "canvas_x": 100, "canvas_y": 120},
+            {"concept": f"Intermediate {goal} Skills", "domain": domain, "state": "yellow", "difficulty_label": "intermediate",
+             "complexity_tier": 2, "dependency_depth": 1, "canvas_x": 400, "canvas_y": -60},
+            {"concept": f"Practical Applications", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 2, "dependency_depth": 1, "canvas_x": 400, "canvas_y": 60},
+            {"concept": f"Problem Solving in {goal}", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 2, "dependency_depth": 2, "canvas_x": 700, "canvas_y": -80},
+            {"concept": f"Tools & Frameworks", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 2, "dependency_depth": 2, "canvas_x": 700, "canvas_y": 80},
+            {"concept": f"Advanced {goal} Concepts", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 3, "dependency_depth": 3, "canvas_x": 1000, "canvas_y": -60},
+            {"concept": f"Real-World Projects", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 3, "dependency_depth": 3, "canvas_x": 1000, "canvas_y": 60},
+            {"concept": f"Mastery & Portfolio", "domain": domain, "state": "red", "difficulty_label": "hard",
+             "complexity_tier": 3, "dependency_depth": 4, "canvas_x": 1300, "canvas_y": 0},
+        ]
 
     edges = [
         {"from": f"Foundations of {goal}", "to": f"Intermediate {goal} Skills", "type": "prerequisite"},
