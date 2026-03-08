@@ -3,11 +3,10 @@ import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { Sidebar } from '../components/ui/Sidebar'
 import { useStore } from '../store/useStore'
-import { useGamification } from '../hooks/useGamification'
 import { api } from '../api/client'
 import {
   Sparkles, AlertTriangle, ChevronRight, Edit3,
-  Brain, TrendingUp, Flame, Clock, Search, Plus, ArrowRight, Loader,
+  Brain, TrendingUp, Clock, Search, Plus, ArrowRight, Loader,
 } from 'lucide-react'
 
 const STATE_COLORS = {
@@ -33,14 +32,12 @@ const QUICK_TOPICS = [
 
 export function DashboardPage() {
   const navigate = useNavigate()
-  const { user, sidebarOpen, gamification, fetchGraph, invalidateGraph } = useStore()
+  const { user, sidebarOpen, fetchGraph, invalidateGraph } = useStore()
   const [nodes, setNodes] = useState([])
   const [loading, setLoading] = useState(true)
   const [topicInput, setTopicInput] = useState('')
   const [addingTopic, setAddingTopic] = useState(false)
   const [topicSuccess, setTopicSuccess] = useState(null)
-
-  useGamification()
 
   useEffect(() => {
     if (!user) return
@@ -113,13 +110,8 @@ export function DashboardPage() {
               </span>
             </h1>
             <div className="flex items-center gap-4 mt-3">
-              {gamification.streakDays > 0 && (
-                <span className="flex items-center gap-1.5 text-sm text-cogni-warning">
-                  <Flame size={16} /> {gamification.streakDays} day streak
-                </span>
-              )}
               <span className="text-sm text-white/30">
-                Level {gamification.level} {gamification.levelTitle}
+                {nodes.filter(n => n.state === 'green').length} of {nodes.length} concepts mastered
               </span>
             </div>
           </motion.div>

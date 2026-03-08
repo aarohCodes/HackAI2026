@@ -76,6 +76,30 @@ async def login(req: LoginRequest):
     }
 
 
+@router.post("/guest")
+async def guest_login():
+    """Create an anonymous guest user and return a token. No credentials needed."""
+    import uuid
+
+    guest_id = uuid.uuid4().hex[:8]
+    user = User(
+        name=f"Learner",
+        email=f"guest_{guest_id}@cognipath.local",
+        hashed_password="",
+        goal="",
+        background="",
+        created_at=datetime.utcnow(),
+    )
+    await user.insert()
+
+    token = create_access_token(str(user.id), user.email)
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "user": _user_response(user),
+    }
+
+
 @router.get("/me")
 async def get_me(current_user: User = Depends(get_current_user)):
     """Rehydrate the current user from their JWT token."""

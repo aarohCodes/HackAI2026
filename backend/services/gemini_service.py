@@ -39,8 +39,8 @@ def _safe_parse_json(text: str) -> dict | None:
 
 
 def _call_gemini_once(prompt: str) -> dict | None:
-    """Single Gemini call with 429 backoff (up to 3 retries)."""
-    for attempt in range(4):
+    """Single Gemini call with 429 backoff (up to 5 retries with longer waits)."""
+    for attempt in range(6):
         try:
             response = client.models.generate_content(
                 model=MODEL,
@@ -50,7 +50,7 @@ def _call_gemini_once(prompt: str) -> dict | None:
         except Exception as e:
             err_str = str(e).lower()
             if "429" in err_str or "resource" in err_str or "rate" in err_str:
-                wait = 2 ** attempt
+                wait = min(3 * (2 ** attempt), 60)  # 3, 6, 12, 24, 48, 60
                 logger.warning("Gemini 429 rate limit, backing off %ds (attempt %d)", wait, attempt + 1)
                 time.sleep(wait)
                 continue
@@ -509,6 +509,88 @@ Respond ONLY with valid JSON:
             "drill_title": "Concept Drill",
             "total_questions": 0,
             "time_limit_seconds": 0,
+            "questions": [],
+            "_fallback": True,
+        }
+    return result
+
+
+def generate_concept_explanation(concept: str, user_background: str, user_goal: str) -> dict:
+    """Generate a concise AI explanation of a concept tailored to the user."""
+    prompt = f"""You are an expert tutor on the CogniPath learning platform.
+
+CONCEPT: {concept}
+LEARNER BACKGROUND: {user_background}
+LEARNER GOAL: {user_goal}
+
+Provide a clear, concise explanation of this concept tailored to the learner.
+
+Respond ONLY with valid JSON:
+  {{
+    "title": "{concept}",
+    "explanation": "<3-5 paragraph explanation, clear and beginner-friendly where needed>",
+    "key_points": ["<point 1>", "<point 2>", "<point 3>"],
+    "real_world_example": "<a concrete real-world application or analogy>",
+    "prerequisites": ["<concept 1>", "<concept 2>"],
+    "next_steps": "<what to learn after mastering this>"
+  }}"""
+
+    result = _call_gemini(prompt)
+    if result is None:
+        return {
+            "title": concept,
+            "explanation": f"{concept} is a key concept on your learning path. Review resources to build understanding.",
+            "key_points": ["Core definition", "Practical application", "Common patterns"],
+            "real_world_example": "Used across many real-world applications.",
+            "prerequisites": [],
+            "next_steps": "Continue to the next concept in your learning path.",
+            "_fallback": True,
+        }
+    return result
+
+
+def generate_node_quiz(concept: str, user_background: str) -> dict:
+    """Generate a focused 5-question quiz for a single concept. 80% required to pass."""
+    prompt = f"""You are generating a focused quiz for a single concept on an adaptive learning platform.
+
+CONCEPT: {concept}
+LEARNER BACKGROUND: {user_background}
+
+Generate exactly 5 questions testing understanding of {concept}. Mix question types.
+The learner needs 80% (4/5) correct to pass and unlock the next topic.
+
+RULES:
+- Use only multiple_choice and true_false types
+- Multiple choice must have exactly 4 options (A, B, C, D) with one correct
+- Questions should test real understanding, not just recall
+- Progress from easier to harder
+- Include a brief explanation for each correct answer
+
+Respond ONLY with valid JSON:
+{{
+  "quiz_title": "Quiz: {concept}",
+  "total_questions": 5,
+  "pass_threshold": 0.8,
+  "questions": [
+    {{
+      "id": 1,
+      "type": "multiple_choice",
+      "concept": "{concept}",
+      "difficulty": "easy",
+      "question": "<question text>",
+      "options": ["A) ...", "B) ...", "C) ...", "D) ..."],
+      "correct_answer": "A",
+      "explanation": "<why this is correct>"
+    }}
+  ]
+}}"""
+
+    result = _call_gemini(prompt)
+    if result is None:
+        return {
+            "quiz_title": f"Quiz: {concept}",
+            "total_questions": 0,
+            "pass_threshold": 0.8,
             "questions": [],
             "_fallback": True,
         }

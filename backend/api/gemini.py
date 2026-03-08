@@ -217,3 +217,39 @@ async def quick_snapshot(req: QuickSnapshotRequest, current_user: User = Depends
         concept=req.concept, user_background=current_user.background
     )
     return result
+
+
+class ChatRequest(BaseModel):
+    concept: str
+    question: str
+    history: list[dict] = []
+
+
+@router.post("/chat")
+async def concept_chat(req: ChatRequest, current_user: User = Depends(get_current_user)):
+    """Answer a clarifying question about a concept."""
+    from services.gemini_service import _call_gemini
+
+    history_text = ""
+    if req.history:
+        history_text = "\n".join(f"{m['role']}: {m['content']}" for m in req.history[-6:])
+
+    prompt = f"""You are a helpful tutor on CogniPath. The learner is studying "{req.concept}".
+LEARNER BACKGROUND: {current_user.background or 'Not specified'}
+LEARNER GOAL: {current_user.goal or 'Not specified'}
+
+{f'CONVERSATION SO FAR:\\n{history_text}\\n' if history_text else ''}
+LEARNER ASKS: {req.question}
+
+Answer clearly and concisely. If relevant, give a concrete example. Keep it under 200 words.
+
+Respond ONLY with valid JSON:
+{{
+  "answer": "<your answer>",
+  "follow_up_suggestion": "<optional follow-up question they could ask>"
+}}"""
+
+    result = _call_gemini(prompt)
+    if result is None:
+        return {"answer": "I'm having trouble answering right now. Please try again.", "follow_up_suggestion": None}
+    return result

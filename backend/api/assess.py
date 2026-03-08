@@ -1,17 +1,20 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import Optional
-from database.models import User, ConceptNode, NodeState
+from database.models import User, ConceptNode, KnowledgeEdge, NodeState
 from services.gemini_service import (
     generate_adaptive_quiz,
     generate_scenario_challenge,
     generate_concept_drill,
+    generate_node_quiz,
     grade_open_answer,
 )
-from services.gamification_service import award_xp
 from api.deps import get_current_user
+from beanie import PydanticObjectId
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class QuizGenerateRequest(BaseModel):
@@ -107,41 +110,101 @@ async def grade_answer(req: GradeAnswerRequest, current_user: User = Depends(get
 
 @router.post("/quiz/complete")
 async def quiz_complete(req: QuizCompleteRequest, current_user: User = Depends(get_current_user)):
-    """Record quiz completion, award XP, and update node mastery scores."""
+    """Record quiz completion. 80% (4/5) required to pass and unlock next nodes."""
     if req.total_questions == 0:
-        return {"xp_earned": 0, "score_pct": 0}
+        return {"score_pct": 0, "passed": False}
 
     score_pct = round((req.correct_answers / req.total_questions) * 100)
-    base_xp = req.correct_answers * 15
-    if score_pct >= 90:
-        base_xp += 100
-    elif score_pct >= 70:
-        base_xp += 50
+    passed = score_pct >= 80
+    nodes_unlocked = []
 
-    xp_result = await award_xp(current_user.id, "quiz")
-
-    if score_pct >= 70 and req.concepts_tested:
+    if passed and req.concepts_tested:
         for concept_name in req.concepts_tested:
             node = await ConceptNode.find_one(
                 ConceptNode.user_id == current_user.id,
                 ConceptNode.concept == concept_name,
             )
             if node:
-                boost = 0.15 if score_pct >= 90 else 0.08
-                node.mastery_score = min(1.0, node.mastery_score + boost)
-                if node.mastery_score >= 0.85 and node.state != NodeState.GREEN:
-                    node.state = NodeState.GREEN
-                elif node.mastery_score >= 0.5 and node.state == NodeState.RED:
-                    node.state = NodeState.YELLOW
+                node.mastery_score = max(node.mastery_score, score_pct / 100.0)
+                node.state = NodeState.GREEN
                 await node.save()
+
+                # Unlock dependent nodes (change from red to yellow)
+                edges = await KnowledgeEdge.find(
+                    KnowledgeEdge.from_node_id == node.id,
+                    KnowledgeEdge.user_id == current_user.id,
+                ).to_list()
+                for edge in edges:
+                    dep_node = await ConceptNode.get(edge.to_node_id)
+                    if dep_node and dep_node.state == NodeState.RED:
+                        dep_node.state = NodeState.YELLOW
+                        await dep_node.save()
+                        nodes_unlocked.append({
+                            "id": str(dep_node.id),
+                            "concept": dep_node.concept,
+                        })
+
+    # On failure, recommend prerequisite concepts to revisit
+    review_recommendations = []
+    if not passed and req.concepts_tested:
+        for concept_name in req.concepts_tested:
+            node = await ConceptNode.find_one(
+                ConceptNode.user_id == current_user.id,
+                ConceptNode.concept == concept_name,
+            )
+            if node:
+                # Find prerequisites for this node
+                prereq_edges = await KnowledgeEdge.find(
+                    KnowledgeEdge.to_node_id == node.id,
+                    KnowledgeEdge.user_id == current_user.id,
+                ).to_list()
+                for edge in prereq_edges:
+                    prereq = await ConceptNode.get(edge.from_node_id)
+                    if prereq and prereq.state != NodeState.GREEN:
+                        review_recommendations.append({
+                            "id": str(prereq.id),
+                            "concept": prereq.concept,
+                            "state": prereq.state.value,
+                            "reason": f"Prerequisite for {concept_name}",
+                        })
+                # Also recommend the failed concept itself
+                review_recommendations.append({
+                    "id": str(node.id),
+                    "concept": node.concept,
+                    "state": node.state.value,
+                    "reason": "Review this concept before retrying",
+                })
 
     return {
         "score_pct": score_pct,
         "correct": req.correct_answers,
         "total": req.total_questions,
-        "xp_earned": base_xp + xp_result.get("xp_gained", 0),
-        "mastery_updated": len(req.concepts_tested) if score_pct >= 70 else 0,
+        "passed": passed,
+        "nodes_unlocked": nodes_unlocked,
+        "review_recommendations": review_recommendations,
     }
+
+
+class NodeQuizRequest(BaseModel):
+    node_id: str
+
+
+@router.post("/quiz/node")
+async def generate_quiz_for_node(req: NodeQuizRequest, current_user: User = Depends(get_current_user)):
+    """Generate a 5-question quiz for a specific concept node."""
+    node = await ConceptNode.get(PydanticObjectId(req.node_id))
+    if not node or node.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    result = generate_node_quiz(
+        concept=node.concept,
+        user_background=current_user.background or "",
+    )
+
+    if result.get("_fallback") and not result.get("questions"):
+        raise HTTPException(status_code=503, detail="Quiz generation temporarily unavailable")
+
+    return result
 
 
 @router.post("/scenario/generate")

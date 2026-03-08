@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { getStoredUser, api } from '../api/client'
+import { getStoredUser, api, ensureGuestAuth } from '../api/client'
 
 const initialUser = getStoredUser()
 
@@ -7,25 +7,27 @@ export const useStore = create((set, get) => ({
   // Auth / User
   user: initialUser,
   token: localStorage.getItem('cognipath_token') || null,
+  authReady: !!initialUser,
   setUser: (user) => set({ user }),
-  setAuth: (user, token) => set({ user, token }),
-  logout: () => {
-    localStorage.removeItem('cognipath_token')
-    localStorage.removeItem('cognipath_user')
-    set({ user: null, token: null, graphNodes: [], graphEdges: [], graphLoaded: false })
+  setAuth: (user, token) => set({ user, token, authReady: true }),
+
+  // Auto guest auth on app start
+  initAuth: async () => {
+    try {
+      const user = await ensureGuestAuth()
+      set({ user, token: localStorage.getItem('cognipath_token'), authReady: true })
+    } catch (err) {
+      console.error('Guest auth failed:', err)
+      set({ authReady: true })
+    }
   },
 
-  // Canvas nodes + edges (React Flow format)
-  nodes: [],
-  edges: [],
-  setNodes: (nodes) => set({ nodes }),
-  setEdges: (edges) => set({ edges }),
-
-  // Shared graph data cache (raw from API, used by Dashboard, Hubs, Canvas)
+  // Shared graph data cache
   graphNodes: [],
   graphEdges: [],
   graphLoaded: false,
   graphLoading: false,
+  currentTopic: '',
   fetchGraph: async (force = false) => {
     const state = get()
     if (!state.user) return { nodes: [], edges: [] }
@@ -33,7 +35,6 @@ export const useStore = create((set, get) => ({
       return { nodes: state.graphNodes, edges: state.graphEdges }
     }
     if (state.graphLoading) {
-      // Wait for in-flight request
       return new Promise((resolve) => {
         const unsub = useStore.subscribe((s) => {
           if (!s.graphLoading) {
@@ -58,55 +59,27 @@ export const useStore = create((set, get) => ({
   },
   invalidateGraph: () => set({ graphLoaded: false }),
 
-  // Active recommendation overlay
-  activeRecommendation: null,
-  setActiveRecommendation: (rec) => set({ activeRecommendation: rec }),
-  clearRecommendation: () => set({ activeRecommendation: null }),
-
-  // Active learning modal
-  activeLearningMode: null,
-  activeConcept: null,
-  setLearningMode: (mode, concept) =>
-    set({ activeLearningMode: mode, activeConcept: concept }),
-  clearLearningMode: () =>
-    set({ activeLearningMode: null, activeConcept: null }),
-
-  // Timeline scrubber
-  timelineDate: null,
-  isHistoricalView: false,
-  setTimelineDate: (d) =>
-    set({ timelineDate: d, isHistoricalView: d !== null }),
-
-  // ML Metrics
-  metrics: null,
-  setMetrics: (m) => set({ metrics: m }),
-
-  // Gamification
-  gamification: {
-    xp: 0,
-    level: 1,
-    levelTitle: 'Novice',
-    streakDays: 0,
-    dailyXp: 0,
-    dailyXpGoal: 500,
-    achievements: [],
-    recentXpGain: null,
+  // Search topic — resets graph and generates new one
+  searchTopic: async (topic) => {
+    const state = get()
+    if (!state.user || !topic.trim()) return
+    set({ graphLoading: true, graphNodes: [], graphEdges: [], graphLoaded: false, currentTopic: topic })
+    try {
+      await api.post('/graph/search', { topic })
+      // Fetch the new graph
+      const res = await api.get('/graph/canvas')
+      const nodes = res.data.nodes || []
+      const edges = res.data.edges || []
+      set({ graphNodes: nodes, graphEdges: edges, graphLoaded: true, graphLoading: false })
+      return { nodes, edges }
+    } catch (err) {
+      console.error('Search failed:', err)
+      set({ graphLoading: false })
+      return { nodes: [], edges: [] }
+    }
   },
-  setGamification: (g) =>
-    set((s) => ({ gamification: { ...s.gamification, ...g } })),
-  addXp: (amount, source) =>
-    set((s) => ({
-      gamification: {
-        ...s.gamification,
-        xp: s.gamification.xp + amount,
-        dailyXp: s.gamification.dailyXp + amount,
-        recentXpGain: { amount, source, timestamp: Date.now() },
-      },
-    })),
 
   // Sidebar
   sidebarOpen: true,
-  activePage: 'dashboard',
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
-  setActivePage: (page) => set({ activePage: page }),
 }))

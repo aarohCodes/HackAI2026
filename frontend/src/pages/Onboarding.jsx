@@ -48,7 +48,7 @@ export function Onboarding() {
       storeUser(updatedUser)
       setUser(updatedUser)
       invalidateGraph()
-      navigate('/dashboard')
+      navigate('/canvas')
     } catch (err) {
       console.error('Onboarding failed:', err)
       setLoading(false)
@@ -73,7 +73,7 @@ export function Onboarding() {
           <span className="font-display font-bold text-xl tracking-tight">CogniPath</span>
         </div>
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/canvas')}
           className="text-sm text-white/40 hover:text-white transition-colors px-4 py-2 rounded-xl border border-white/10 hover:border-white/20"
         >
           Skip

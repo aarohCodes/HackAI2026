@@ -6,12 +6,13 @@ from database.models import (
     User, ConceptNode, KnowledgeEdge, LearningEvent,
     Recommendation, NodeState, CanvasSnapshot, NodeSnapshot,
 )
-from services.gamification_service import award_xp, check_achievements
-from services.gemini_service import generate_topic_nodes
+from services.gemini_service import generate_topic_nodes, generate_concept_explanation
 from api.deps import get_current_user
 from beanie import PydanticObjectId
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class EventRequest(BaseModel):
@@ -95,8 +96,6 @@ async def log_learning_event(req: EventRequest, current_user: User = Depends(get
     if not node or node.user_id != uid:
         raise HTTPException(status_code=404, detail="Node not found")
 
-    xp_result = await award_xp(uid, req.event_type)
-
     event = LearningEvent(
         user_id=uid,
         node_id=nid,
@@ -107,7 +106,7 @@ async def log_learning_event(req: EventRequest, current_user: User = Depends(get
         confidence_after=req.confidence_after,
         source=req.source,
         metadata=req.metadata,
-        xp_earned=xp_result.get("xp_gained", 0),
+        xp_earned=0,
         created_at=datetime.utcnow(),
     )
     await event.insert()
@@ -118,12 +117,8 @@ async def log_learning_event(req: EventRequest, current_user: User = Depends(get
         node.state = NodeState.YELLOW
     await node.save()
 
-    new_achievements = await check_achievements(uid)
-
     return {
         "event_id": str(event.id),
-        "xp": xp_result,
-        "new_achievements": new_achievements,
     }
 
 
@@ -139,39 +134,39 @@ async def update_node_position(node_id: str, pos: PositionUpdate, current_user: 
     return {"ok": True}
 
 
-class AddTopicRequest(BaseModel):
+class SearchTopicRequest(BaseModel):
     topic: str
+    background: str = ""
 
 
-@router.post("/add-topic")
-async def add_topic(req: AddTopicRequest, current_user: User = Depends(get_current_user)):
-    """Generate new concept nodes for a topic using Gemini and add them to the user's graph."""
+@router.post("/search")
+async def search_topic(req: SearchTopicRequest, current_user: User = Depends(get_current_user)):
+    """Reset the user's graph and generate a new one for the searched topic."""
     uid = current_user.id
 
-    existing_nodes = await ConceptNode.find(ConceptNode.user_id == uid).to_list()
-    existing_concepts = [n.concept for n in existing_nodes]
+    # Delete all existing nodes and edges
+    await ConceptNode.find(ConceptNode.user_id == uid).delete()
+    await KnowledgeEdge.find(KnowledgeEdge.user_id == uid).delete()
 
-    # Calculate position offset so new nodes don't overlap existing ones
-    max_x = max((n.canvas_x for n in existing_nodes), default=0)
-    avg_y = sum(n.canvas_y for n in existing_nodes) / len(existing_nodes) if existing_nodes else 0
+    # Update user goal to the searched topic
+    current_user.goal = req.topic
+    if req.background:
+        current_user.background = req.background
+    await current_user.save()
 
-    graph_data = generate_topic_nodes(
-        topic=req.topic,
+    # Generate graph using web-search-enhanced generation
+    from api.users import _generate_graph_with_research
+    graph_data = await _generate_graph_with_research(
+        goal=req.topic,
         background=current_user.background or "",
-        existing_concepts=existing_concepts,
-        start_x=max_x + 300,
-        start_y=avg_y,
+        prior_history="",
     )
 
-    if not graph_data or "nodes" not in graph_data:
-        raise HTTPException(status_code=502, detail="Failed to generate topic nodes from Gemini")
+    if not graph_data or "nodes" not in graph_data or len(graph_data["nodes"]) == 0:
+        raise HTTPException(status_code=502, detail="Failed to generate knowledge graph")
 
     nodes_created = []
     concept_to_id = {}
-
-    # Include existing concept->id mapping for cross-topic edges
-    for n in existing_nodes:
-        concept_to_id[n.concept.lower()] = n.id
 
     for n in graph_data["nodes"]:
         state_str = n.get("state", "red")
@@ -187,9 +182,9 @@ async def add_topic(req: AddTopicRequest, current_user: User = Depends(get_curre
             complexity_tier=n.get("complexity_tier", 1),
             dependency_depth=n.get("dependency_depth", 0),
             state=state,
-            mastery_score=0.0,
-            retention_rt=0.0,
-            canvas_x=n.get("canvas_x", max_x + 300),
+            mastery_score=1.0 if state == NodeState.GREEN else (0.5 if state == NodeState.YELLOW else 0.0),
+            retention_rt=1.0 if state == NodeState.GREEN else (0.7 if state == NodeState.YELLOW else 0.0),
+            canvas_x=n.get("canvas_x", 0),
             canvas_y=n.get("canvas_y", 0),
             created_at=datetime.utcnow(),
         )
@@ -197,6 +192,7 @@ async def add_topic(req: AddTopicRequest, current_user: User = Depends(get_curre
         nodes_created.append(node)
         concept_to_id[n["concept"].lower()] = node.id
 
+    edges_created = 0
     for e in graph_data.get("edges", []):
         from_id = concept_to_id.get(e["from"].lower())
         to_id = concept_to_id.get(e["to"].lower())
@@ -208,21 +204,13 @@ async def add_topic(req: AddTopicRequest, current_user: User = Depends(get_curre
                 edge_type=e.get("type", "prerequisite"),
             )
             await edge.insert()
+            edges_created += 1
+
+    logger.info("Search graph for '%s': %d nodes, %d edges", req.topic, len(nodes_created), edges_created)
 
     return {
+        "topic": req.topic,
         "nodes_created": len(nodes_created),
-        "nodes": [
-            {
-                "id": str(n.id),
-                "concept": n.concept,
-                "domain": n.domain,
-                "state": n.state.value,
-                "complexity_tier": n.complexity_tier,
-                "canvas_x": n.canvas_x,
-                "canvas_y": n.canvas_y,
-            }
-            for n in nodes_created
-        ],
     }
 
 
@@ -271,3 +259,53 @@ async def get_canvas_history(current_user: User = Depends(get_current_user)):
         )
 
     return {"history": [s.model_dump() for s in result]}
+
+
+@router.get("/node/{node_id}/detail")
+async def get_node_detail(node_id: str, current_user: User = Depends(get_current_user)):
+    """Get AI explanation for a concept node. Used when clicking a node on the canvas."""
+    node = await ConceptNode.get(PydanticObjectId(node_id))
+    if not node or node.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Node not found")
+
+    # Get AI explanation
+    explanation = generate_concept_explanation(
+        concept=node.concept,
+        user_background=current_user.background or "",
+        user_goal=current_user.goal or "",
+    )
+
+    # Get prerequisite/dependent nodes for context
+    edges = await KnowledgeEdge.find(KnowledgeEdge.user_id == current_user.id).to_list()
+    prereq_ids = [e.from_node_id for e in edges if e.to_node_id == node.id]
+    dependent_ids = [e.to_node_id for e in edges if e.from_node_id == node.id]
+
+    prereqs = []
+    for pid in prereq_ids:
+        pnode = await ConceptNode.get(pid)
+        if pnode:
+            prereqs.append({"id": str(pnode.id), "concept": pnode.concept, "state": pnode.state.value})
+
+    dependents = []
+    for did in dependent_ids:
+        dnode = await ConceptNode.get(did)
+        if dnode:
+            dependents.append({"id": str(dnode.id), "concept": dnode.concept, "state": dnode.state.value})
+
+    # Check if all prerequisites are green (mastered)
+    all_prereqs_met = all(p["state"] == "green" for p in prereqs) if prereqs else True
+
+    return {
+        "node": {
+            "id": str(node.id),
+            "concept": node.concept,
+            "domain": node.domain,
+            "state": node.state.value,
+            "mastery_score": node.mastery_score,
+            "complexity_tier": node.complexity_tier,
+        },
+        "explanation": explanation,
+        "prerequisites": prereqs,
+        "dependents": dependents,
+        "all_prereqs_met": all_prereqs_met,
+    }

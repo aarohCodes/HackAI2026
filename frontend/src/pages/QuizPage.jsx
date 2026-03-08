@@ -1,33 +1,19 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sidebar } from '../components/ui/Sidebar'
 import { useStore } from '../store/useStore'
 import { api } from '../api/client'
 import {
-  Brain, ChevronRight, CheckCircle, XCircle, Clock,
-  Zap, Trophy, ArrowLeft, Loader2, RotateCcw, Sparkles
+  Brain, ChevronRight, CheckCircle, XCircle,
+  ArrowLeft, RotateCcw, Sparkles, Trophy, Unlock, BookOpen,
 } from 'lucide-react'
 
 function QuestionCard({ question, index, total, onAnswer, answered, selectedAnswer }) {
   const isMultipleChoice = question.type === 'multiple_choice' || question.type === 'code_trace'
   const isTrueFalse = question.type === 'true_false'
-  const isFillBlank = question.type === 'fill_blank'
-  const isOrdering = question.type === 'ordering'
 
-  const [fillAnswer, setFillAnswer] = useState('')
-  const [orderItems, setOrderItems] = useState(question.items ? [...question.items] : [])
-
-  const correct = answered && selectedAnswer === question.correct_answer
+  const correct = answered && String(selectedAnswer).toLowerCase() === String(question.correct_answer).toLowerCase()
   const showResult = answered
-
-  const moveItem = (fromIdx, toIdx) => {
-    if (answered) return
-    const updated = [...orderItems]
-    const [item] = updated.splice(fromIdx, 1)
-    updated.splice(toIdx, 0, item)
-    setOrderItems(updated)
-  }
 
   return (
     <motion.div
@@ -43,9 +29,7 @@ function QuestionCard({ question, index, total, onAnswer, answered, selectedAnsw
           </span>
           <span className="text-xs text-white/30 uppercase tracking-wider">{question.type.replace('_', ' ')}</span>
         </div>
-        <span className="text-xs text-white/30">
-          {question.concept} &middot; {question.difficulty}
-        </span>
+        <span className="text-xs text-white/30">{question.difficulty}</span>
       </div>
 
       {question.code_snippet && (
@@ -56,7 +40,6 @@ function QuestionCard({ question, index, total, onAnswer, answered, selectedAnsw
 
       <p className="text-lg font-semibold mb-6 leading-relaxed">{question.question}</p>
 
-      {/* Multiple choice / Code trace */}
       {isMultipleChoice && (
         <div className="space-y-2.5">
           {question.options.map((opt, i) => {
@@ -89,7 +72,6 @@ function QuestionCard({ question, index, total, onAnswer, answered, selectedAnsw
         </div>
       )}
 
-      {/* True / False */}
       {isTrueFalse && (
         <div className="flex gap-3">
           {['true', 'false'].map((val) => {
@@ -114,63 +96,6 @@ function QuestionCard({ question, index, total, onAnswer, answered, selectedAnsw
         </div>
       )}
 
-      {/* Fill in blank */}
-      {isFillBlank && (
-        <div className="space-y-3">
-          <input
-            value={fillAnswer}
-            onChange={(e) => setFillAnswer(e.target.value)}
-            disabled={answered}
-            placeholder="Type your answer..."
-            className="w-full cogni-input text-lg"
-            onKeyDown={(e) => e.key === 'Enter' && !answered && fillAnswer.trim() && onAnswer(fillAnswer.trim())}
-          />
-          {!answered && (
-            <button
-              onClick={() => fillAnswer.trim() && onAnswer(fillAnswer.trim())}
-              disabled={!fillAnswer.trim()}
-              className="cogni-btn-primary disabled:opacity-40"
-            >
-              Submit Answer
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Ordering */}
-      {isOrdering && (
-        <div className="space-y-2">
-          {orderItems.map((item, i) => (
-            <div key={item} className="flex items-center gap-2">
-              <span className="w-6 text-xs text-white/30 text-center">{i + 1}.</span>
-              <div className="flex-1 p-3 rounded-xl border border-white/10 bg-white/5 text-sm">
-                {item}
-              </div>
-              <div className="flex flex-col gap-0.5">
-                {i > 0 && (
-                  <button onClick={() => moveItem(i, i - 1)} className="text-white/30 hover:text-white text-xs">&uarr;</button>
-                )}
-                {i < orderItems.length - 1 && (
-                  <button onClick={() => moveItem(i, i + 1)} className="text-white/30 hover:text-white text-xs">&darr;</button>
-                )}
-              </div>
-            </div>
-          ))}
-          {!answered && (
-            <button
-              onClick={() => {
-                const userOrder = orderItems.map((item) => question.items.indexOf(item))
-                onAnswer(JSON.stringify(userOrder))
-              }}
-              className="cogni-btn-primary mt-2"
-            >
-              Lock In Order
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Explanation */}
       {showResult && (
         <motion.div
           initial={{ y: 10, opacity: 0 }}
@@ -189,7 +114,8 @@ function QuestionCard({ question, index, total, onAnswer, answered, selectedAnsw
 
 export function QuizPage() {
   const navigate = useNavigate()
-  const { user, sidebarOpen } = useStore()
+  const location = useLocation()
+  const { invalidateGraph } = useStore()
   const [loading, setLoading] = useState(true)
   const [quiz, setQuiz] = useState(null)
   const [currentQ, setCurrentQ] = useState(0)
@@ -198,34 +124,29 @@ export function QuizPage() {
   const [finished, setFinished] = useState(false)
   const [results, setResults] = useState(null)
 
+  const nodeId = location.state?.nodeId
+  const concept = location.state?.concept
+
   useEffect(() => {
-    api.post('/assess/quiz/generate', { difficulty: 'mixed' })
-      .then((res) => {
-        setQuiz(res.data)
-        setLoading(false)
-      })
+    if (!nodeId) {
+      api.post('/assess/quiz/generate', { difficulty: 'mixed' })
+        .then((res) => { setQuiz(res.data); setLoading(false) })
+        .catch(() => setLoading(false))
+      return
+    }
+
+    api.post('/assess/quiz/node', { node_id: nodeId })
+      .then((res) => { setQuiz(res.data); setLoading(false) })
       .catch((err) => {
         console.error('Failed to generate quiz:', err)
         setLoading(false)
       })
-  }, [])
+  }, [nodeId])
 
-  const handleAnswer = useCallback(async (answer) => {
+  const handleAnswer = useCallback((answer) => {
     if (!quiz) return
     const q = quiz.questions[currentQ]
     const isCorrect = String(answer).toLowerCase() === String(q.correct_answer).toLowerCase()
-
-    if (q.type === 'fill_blank' && !isCorrect) {
-      const alts = q.accept_alternatives || []
-      const altCorrect = alts.some(
-        (a) => a.toLowerCase() === String(answer).toLowerCase()
-      )
-      if (altCorrect) {
-        setAnswers((prev) => ({ ...prev, [currentQ]: { answer, correct: true } }))
-        return
-      }
-    }
-
     setAnswers((prev) => ({ ...prev, [currentQ]: { answer, correct: isCorrect } }))
   }, [quiz, currentQ])
 
@@ -250,12 +171,18 @@ export function QuizPage() {
         concepts_tested: concepts,
       })
       setResults(res.data)
+      if (res.data.passed) {
+        invalidateGraph()
+      }
     } catch {
+      const scorePct = Math.round((correctCount / quiz.questions.length) * 100)
       setResults({
-        score_pct: Math.round((correctCount / quiz.questions.length) * 100),
+        score_pct: scorePct,
         correct: correctCount,
         total: quiz.questions.length,
-        xp_earned: correctCount * 15,
+        passed: scorePct >= 80,
+        nodes_unlocked: [],
+        review_recommendations: [],
       })
     }
     setFinished(true)
@@ -263,30 +190,26 @@ export function QuizPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-cogni-bg">
-        <Sidebar />
-        <div className="transition-all duration-300 p-8 flex items-center justify-center min-h-screen" style={{ marginLeft: sidebarOpen ? 224 : 72 }}>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
-            <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
-              <Brain size={48} className="mx-auto text-cogni-accent" />
-            </motion.div>
-            <p className="mt-4 text-white/50 font-semibold">Gemini is crafting your personalized quiz...</p>
-            <p className="text-xs text-white/25 mt-1">Analyzing your knowledge graph to build adaptive questions</p>
+      <div className="min-h-screen bg-cogni-bg flex items-center justify-center">
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
+          <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
+            <Brain size={48} className="mx-auto text-cogni-accent" />
           </motion.div>
-        </div>
+          <p className="mt-4 text-white/50 font-semibold">
+            {concept ? `Generating quiz for ${concept}...` : 'Crafting your personalized quiz...'}
+          </p>
+          <p className="text-xs text-white/25 mt-1">Powered by Gemini AI</p>
+        </motion.div>
       </div>
     )
   }
 
   if (!quiz || !quiz.questions?.length) {
     return (
-      <div className="min-h-screen bg-cogni-bg">
-        <Sidebar />
-        <div className="transition-all duration-300 p-8 flex items-center justify-center min-h-screen" style={{ marginLeft: sidebarOpen ? 224 : 72 }}>
-          <div className="text-center">
-            <p className="text-white/50">Could not generate quiz. Please try again.</p>
-            <button onClick={() => navigate('/assess')} className="cogni-btn-primary mt-4">Back to Assessment</button>
-          </div>
+      <div className="min-h-screen bg-cogni-bg flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-white/50">Could not generate quiz. Please try again.</p>
+          <button onClick={() => navigate('/canvas')} className="cogni-btn-primary mt-4">Back to Graph</button>
         </div>
       </div>
     )
@@ -294,59 +217,119 @@ export function QuizPage() {
 
   if (finished && results) {
     const scorePct = results.score_pct || 0
-    const grade = scorePct >= 90 ? 'A' : scorePct >= 80 ? 'B' : scorePct >= 70 ? 'C' : scorePct >= 60 ? 'D' : 'F'
-    const gradeColor = scorePct >= 80 ? '#10B981' : scorePct >= 60 ? '#F59E0B' : '#EF4444'
+    const passed = results.passed
+    const gradeColor = passed ? '#10B981' : '#EF4444'
+    const recommendations = results.review_recommendations || []
 
     return (
-      <div className="min-h-screen bg-cogni-bg">
-        <Sidebar />
-        <div className="transition-all duration-300 p-8" style={{ marginLeft: sidebarOpen ? 224 : 72 }}>
-          <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="max-w-2xl mx-auto text-center">
-            <div className="relative w-32 h-32 mx-auto mb-6">
-              <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
-                <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="8" />
-                <motion.circle
-                  cx="60" cy="60" r="52" fill="none"
-                  stroke={gradeColor} strokeWidth="8" strokeLinecap="round"
-                  initial={{ strokeDasharray: '0 326.7' }}
-                  animate={{ strokeDasharray: `${(scorePct / 100) * 326.7} 326.7` }}
-                  transition={{ duration: 1.5, ease: 'easeOut' }}
-                />
-              </svg>
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-4xl font-black" style={{ color: gradeColor }}>{grade}</span>
-                <span className="text-xs text-white/40">{scorePct}%</span>
-              </div>
+      <div className="min-h-screen bg-cogni-bg p-8">
+        <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="max-w-2xl mx-auto text-center">
+          {/* Score circle */}
+          <div className="relative w-36 h-36 mx-auto mb-6">
+            <svg viewBox="0 0 120 120" className="w-full h-full -rotate-90">
+              <circle cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="8" />
+              <motion.circle
+                cx="60" cy="60" r="52" fill="none"
+                stroke={gradeColor} strokeWidth="8" strokeLinecap="round"
+                initial={{ strokeDasharray: '0 326.7' }}
+                animate={{ strokeDasharray: `${(scorePct / 100) * 326.7} 326.7` }}
+                transition={{ duration: 1.5, ease: 'easeOut' }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-4xl font-black" style={{ color: gradeColor }}>{scorePct}%</span>
+              <span className="text-xs text-white/40">{results.correct}/{results.total}</span>
             </div>
+          </div>
 
-            <h1 className="text-2xl font-black mb-2">{quiz.quiz_title}</h1>
-            <p className="text-white/40 mb-6">
-              {results.correct} of {results.total} correct
-            </p>
+          <h1 className="text-2xl font-black mb-2">
+            {passed ? 'Quiz Passed!' : 'Not Yet — Keep Learning'}
+          </h1>
+          {concept && <p className="text-white/60 font-semibold mb-2">{concept}</p>}
+          <p className="text-white/40 mb-6">
+            {passed
+              ? 'You scored 80% or higher. This concept is now mastered!'
+              : `You need 80% (4/5) to pass. You got ${results.correct}/${results.total}.`}
+          </p>
 
-            <div className="flex justify-center gap-4 mb-8">
-              <div className="cogni-card text-center px-6">
-                <Zap size={20} className="mx-auto text-cogni-warning mb-1" />
-                <p className="text-xl font-black text-cogni-teal">+{results.xp_earned}</p>
-                <p className="text-[10px] text-white/30 uppercase tracking-wider">XP Earned</p>
+          {/* Unlocked nodes on pass */}
+          {passed && results.nodes_unlocked?.length > 0 && (
+            <motion.div
+              initial={{ y: 15, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="mb-6"
+            >
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cogni-teal/10 border border-cogni-teal/20">
+                <Unlock size={16} className="text-cogni-teal" />
+                <span className="text-sm text-cogni-teal font-semibold">
+                  Unlocked: {results.nodes_unlocked.map(n => n.concept).join(', ')}
+                </span>
               </div>
-              <div className="cogni-card text-center px-6">
-                <Trophy size={20} className="mx-auto text-cogni-accent mb-1" />
-                <p className="text-xl font-black">{results.mastery_updated || 0}</p>
-                <p className="text-[10px] text-white/30 uppercase tracking-wider">Nodes Leveled</p>
-              </div>
-            </div>
+            </motion.div>
+          )}
 
-            <div className="flex justify-center gap-3">
-              <button onClick={() => navigate('/assess')} className="cogni-btn-secondary flex items-center gap-2">
-                <ArrowLeft size={16} /> Back
-              </button>
+          {/* Recommendations on failure */}
+          {!passed && recommendations.length > 0 && (
+            <motion.div
+              initial={{ y: 15, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="mb-6 text-left max-w-lg mx-auto"
+            >
+              <div className="p-5 rounded-2xl bg-amber-500/5 border border-amber-500/20">
+                <div className="flex items-center gap-2 mb-3">
+                  <BookOpen size={16} className="text-amber-400" />
+                  <h3 className="text-sm font-bold text-amber-400">Recommended Review</h3>
+                </div>
+                <p className="text-xs text-white/40 mb-3">
+                  Review these concepts before retrying the quiz:
+                </p>
+                <div className="space-y-2">
+                  {recommendations.map((rec, i) => (
+                    <button
+                      key={i}
+                      onClick={() => navigate(`/learn/${rec.id}`)}
+                      className="w-full flex items-center justify-between p-3 rounded-xl bg-white/[0.03] border border-white/10 hover:bg-white/[0.06] transition-all text-left"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2.5 h-2.5 rounded-full ${
+                          rec.state === 'green' ? 'bg-emerald-500' :
+                          rec.state === 'yellow' ? 'bg-amber-500' : 'bg-red-500'
+                        }`} />
+                        <div>
+                          <p className="text-sm font-semibold text-white/70">{rec.concept}</p>
+                          <p className="text-[10px] text-white/30">{rec.reason}</p>
+                        </div>
+                      </div>
+                      <ChevronRight size={14} className="text-white/20" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Action buttons */}
+          <div className="flex justify-center gap-3">
+            <button onClick={() => navigate('/canvas')} className="cogni-btn-secondary flex items-center gap-2">
+              <ArrowLeft size={16} /> Back to Graph
+            </button>
+            {!passed && (
               <button onClick={() => window.location.reload()} className="cogni-btn-primary flex items-center gap-2">
-                <RotateCcw size={16} /> New Quiz
+                <RotateCcw size={16} /> Retry Quiz
               </button>
-            </div>
-          </motion.div>
-        </div>
+            )}
+            {!passed && nodeId && (
+              <button
+                onClick={() => navigate(`/learn/${nodeId}`)}
+                className="px-4 py-2.5 rounded-xl bg-amber-500/20 text-amber-400 font-semibold text-sm hover:bg-amber-500/30 transition-colors flex items-center gap-2"
+              >
+                <BookOpen size={16} /> Review Concept
+              </button>
+            )}
+          </div>
+        </motion.div>
       </div>
     )
   }
@@ -356,60 +339,55 @@ export function QuizPage() {
   const progressPct = ((currentQ + (isAnswered ? 1 : 0)) / quiz.questions.length) * 100
 
   return (
-    <div className="min-h-screen bg-cogni-bg">
-      <Sidebar />
-      <div className="transition-all duration-300 p-8" style={{ marginLeft: sidebarOpen ? 224 : 72 }}>
-        <div className="max-w-3xl mx-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <button onClick={() => navigate('/assess')} className="text-white/30 hover:text-white transition-colors">
-                <ArrowLeft size={20} />
-              </button>
-              <div>
-                <h1 className="font-bold">{quiz.quiz_title}</h1>
-                <p className="text-xs text-white/30">{quiz.total_questions} questions &middot; ~{quiz.estimated_minutes} min</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-xs text-white/30">
-              <Sparkles size={14} className="text-cogni-accent" />
-              Generated by Gemini
+    <div className="min-h-screen bg-cogni-bg p-8">
+      <div className="max-w-3xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate(-1)} className="text-white/30 hover:text-white transition-colors">
+              <ArrowLeft size={20} />
+            </button>
+            <div>
+              <h1 className="font-bold">{quiz.quiz_title}</h1>
+              <p className="text-xs text-white/30">{quiz.total_questions} questions &middot; 80% to pass</p>
             </div>
           </div>
-
-          {/* Progress bar */}
-          <div className="h-1.5 bg-white/5 rounded-full mb-8 overflow-hidden">
-            <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-cogni-accent to-cogni-teal"
-              animate={{ width: `${progressPct}%` }}
-              transition={{ duration: 0.3 }}
-            />
+          <div className="flex items-center gap-2 text-xs text-white/30">
+            <Sparkles size={14} className="text-cogni-accent" />
+            Gemini AI
           </div>
-
-          <AnimatePresence mode="wait">
-            <QuestionCard
-              key={currentQ}
-              question={currentQuestion}
-              index={currentQ}
-              total={quiz.questions.length}
-              onAnswer={handleAnswer}
-              answered={isAnswered}
-              selectedAnswer={answers[currentQ]?.answer}
-            />
-          </AnimatePresence>
-
-          {isAnswered && (
-            <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex justify-center mt-6">
-              <button onClick={nextQuestion} className="cogni-btn-primary flex items-center gap-2">
-                {currentQ < quiz.questions.length - 1 ? (
-                  <>Next Question <ChevronRight size={16} /></>
-                ) : (
-                  <>Finish Quiz <Trophy size={16} /></>
-                )}
-              </button>
-            </motion.div>
-          )}
         </div>
+
+        <div className="h-1.5 bg-white/5 rounded-full mb-8 overflow-hidden">
+          <motion.div
+            className="h-full rounded-full bg-gradient-to-r from-cogni-accent to-cogni-teal"
+            animate={{ width: `${progressPct}%` }}
+            transition={{ duration: 0.3 }}
+          />
+        </div>
+
+        <AnimatePresence mode="wait">
+          <QuestionCard
+            key={currentQ}
+            question={currentQuestion}
+            index={currentQ}
+            total={quiz.questions.length}
+            onAnswer={handleAnswer}
+            answered={isAnswered}
+            selectedAnswer={answers[currentQ]?.answer}
+          />
+        </AnimatePresence>
+
+        {isAnswered && (
+          <motion.div initial={{ y: 10, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex justify-center mt-6">
+            <button onClick={nextQuestion} className="cogni-btn-primary flex items-center gap-2">
+              {currentQ < quiz.questions.length - 1 ? (
+                <>Next Question <ChevronRight size={16} /></>
+              ) : (
+                <>Finish Quiz <Trophy size={16} /></>
+              )}
+            </button>
+          </motion.div>
+        )}
       </div>
     </div>
   )

@@ -38,7 +38,7 @@ export function Login() {
       setAuth(user, access_token)
 
       if (user.has_onboarded) {
-        navigate('/dashboard')
+        navigate('/canvas')
       } else {
         navigate('/onboarding')
       }

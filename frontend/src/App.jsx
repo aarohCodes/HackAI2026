@@ -1,63 +1,43 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
 import { useStore } from './store/useStore'
-import { Landing } from './pages/Landing'
-import { Login } from './pages/Login'
-import { Onboarding } from './pages/Onboarding'
-import { DashboardPage } from './pages/Dashboard'
-import { HubsPage } from './pages/Hubs'
 import { CanvasPage } from './pages/Canvas'
-import { VideoViewPage } from './pages/VideoView'
-import { MetricsPage } from './pages/Metrics'
-import { AssessmentPage } from './pages/Assessment'
+import { ConceptPage } from './pages/ConceptPage'
 import { QuizPage } from './pages/QuizPage'
-import { ScenarioPage } from './pages/ScenarioPage'
-import { DrillPage } from './pages/DrillPage'
+import { motion } from 'framer-motion'
+import { Brain } from 'lucide-react'
 
-function ProtectedRoute({ children }) {
-  const user = useStore((s) => s.user)
-  if (!user) return <Navigate to="/login" replace />
-  return children
-}
-
-function OnboardGuard({ children }) {
-  const user = useStore((s) => s.user)
-  if (!user) return <Navigate to="/login" replace />
-  if (user.has_onboarded) return <Navigate to="/dashboard" replace />
-  return children
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen bg-cogni-bg flex items-center justify-center">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center">
+        <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>
+          <Brain size={48} className="mx-auto text-cogni-accent" />
+        </motion.div>
+        <p className="mt-4 text-white/50 font-semibold">Loading CogniPath...</p>
+      </motion.div>
+    </div>
+  )
 }
 
 export default function App() {
-  const user = useStore((s) => s.user)
+  const authReady = useStore((s) => s.authReady)
+  const initAuth = useStore((s) => s.initAuth)
 
-  const homePath = !user
-    ? '/'
-    : user.has_onboarded
-      ? '/dashboard'
-      : '/onboarding'
+  useEffect(() => {
+    initAuth()
+  }, [initAuth])
+
+  if (!authReady) return <LoadingScreen />
 
   return (
     <BrowserRouter>
       <Routes>
-        {/* Public */}
-        <Route path="/" element={user ? <Navigate to={homePath} replace /> : <Landing />} />
-        <Route path="/login" element={user ? <Navigate to={homePath} replace /> : <Login />} />
-
-        {/* Onboarding */}
-        <Route path="/onboarding" element={<OnboardGuard><Onboarding /></OnboardGuard>} />
-
-        {/* Protected app pages */}
-        <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
-        <Route path="/hubs" element={<ProtectedRoute><HubsPage /></ProtectedRoute>} />
-        <Route path="/canvas" element={<ProtectedRoute><CanvasPage /></ProtectedRoute>} />
-        <Route path="/video/:nodeId" element={<ProtectedRoute><VideoViewPage /></ProtectedRoute>} />
-        <Route path="/metrics" element={<ProtectedRoute><MetricsPage /></ProtectedRoute>} />
-        <Route path="/assess" element={<ProtectedRoute><AssessmentPage /></ProtectedRoute>} />
-        <Route path="/assess/quiz" element={<ProtectedRoute><QuizPage /></ProtectedRoute>} />
-        <Route path="/assess/scenario" element={<ProtectedRoute><ScenarioPage /></ProtectedRoute>} />
-        <Route path="/assess/drill" element={<ProtectedRoute><DrillPage /></ProtectedRoute>} />
-
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to={homePath} replace />} />
+        <Route path="/" element={<CanvasPage />} />
+        <Route path="/canvas" element={<CanvasPage />} />
+        <Route path="/learn/:nodeId" element={<ConceptPage />} />
+        <Route path="/assess/quiz" element={<QuizPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )
