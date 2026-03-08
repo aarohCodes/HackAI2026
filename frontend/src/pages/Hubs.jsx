@@ -7,7 +7,9 @@ import { useGamification } from '../hooks/useGamification'
 import {
   Search, Bell, Plus, Minus, Navigation,
   Brain, Code, Palette, Server, ChevronRight,
+  Mic, MicOff, Loader2,
 } from 'lucide-react'
+import { useVoiceInput } from '../hooks/useVoiceInput'
 
 const HUB_ICONS = {
   machine_learning: Brain,
@@ -41,6 +43,9 @@ export function HubsPage() {
   const [searchInput, setSearchInput] = useState('')
   const [searching, setSearching] = useState(false)
   const [loading, setLoading] = useState(true)
+  const { isRecording, isTranscribing, toggleRecording, error: voiceError } = useVoiceInput((text) =>
+    setSearchInput((prev) => (prev ? prev + ' ' + text : text))
+  )
 
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [zoom, setZoom] = useState(1)
@@ -205,10 +210,25 @@ export function HubsPage() {
                 placeholder="Search or create a hub..."
                 className="bg-transparent text-sm text-white placeholder-[#3D5A80] outline-none flex-1"
               />
+              {isTranscribing && (
+                <Loader2 size={14} className="text-cogni-accent animate-spin flex-shrink-0" />
+              )}
+              <button
+                type="button"
+                onClick={toggleRecording}
+                disabled={searching || graphLoading}
+                className={`p-1 rounded-lg transition-colors flex-shrink-0 ${isRecording ? 'text-red-400' : 'text-[#3D5A80] hover:text-cogni-accent'}`}
+                title={isRecording ? 'Stop recording' : 'Voice search'}
+              >
+                {isRecording ? <MicOff size={14} /> : <Mic size={14} />}
+              </button>
             </div>
+            {voiceError && (
+              <span className="text-xs text-red-400 max-w-[160px] truncate" title={voiceError}>{voiceError}</span>
+            )}
             <button
               type="submit"
-              disabled={searching || graphLoading || !searchInput.trim()}
+              disabled={searching || graphLoading || isTranscribing || !searchInput.trim()}
               className="px-4 py-2.5 rounded-xl bg-cogni-accent text-white text-sm font-semibold disabled:opacity-50"
             >
               {searching || graphLoading ? 'Creating...' : 'Go'}
@@ -237,6 +257,18 @@ export function HubsPage() {
                   placeholder="e.g. Machine Learning, React..."
                   className="flex-1 bg-transparent text-white placeholder-[#3D5A80] outline-none"
                 />
+                {isTranscribing && (
+                  <Loader2 size={18} className="text-cogni-accent animate-spin flex-shrink-0" />
+                )}
+                <button
+                  type="button"
+                  onClick={toggleRecording}
+                  disabled={searching || graphLoading}
+                  className={`p-1.5 rounded-lg transition-colors flex-shrink-0 ${isRecording ? 'text-red-400' : 'text-[#3D5A80] hover:text-cogni-accent'}`}
+                  title={isRecording ? 'Stop recording' : 'Voice search'}
+                >
+                  {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
+                </button>
                 <button type="submit" disabled={searching || graphLoading} className="px-4 py-2 rounded-xl bg-cogni-accent text-white font-semibold disabled:opacity-50">
                   Create hub
                 </button>

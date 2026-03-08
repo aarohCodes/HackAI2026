@@ -6,7 +6,9 @@ import { api } from '../api/client'
 import {
   ArrowLeft, Sparkles, Play, Send, BookOpen, ExternalLink,
   Globe, Brain, ChevronRight, CheckCircle, Lock, Loader2,
+  Volume2, VolumeX,
 } from 'lucide-react'
+import { useTextToSpeech } from '../hooks/useTextToSpeech'
 
 export function ConceptPage() {
   const { nodeId } = useParams()
@@ -21,6 +23,8 @@ export function ConceptPage() {
   const [chatInput, setChatInput] = useState('')
   const [chatMessages, setChatMessages] = useState([])
   const [chatLoading, setChatLoading] = useState(false)
+  const ttsExplanation = useTextToSpeech()
+  const ttsExample = useTextToSpeech()
 
   // Load node data + AI explanation + video
   useEffect(() => {
@@ -37,19 +41,31 @@ export function ConceptPage() {
         const detailRes = await api.get(`/graph/node/${nodeId}/detail`)
         setNodeDetail(detailRes.data)
 
-        // Load video snippet
+        // Load video snippet (try multiple queries until one returns a snippet)
         if (foundNode) {
-          try {
-            const snippetRes = await api.post('/youtube/snippet', {
-              concept: foundNode.concept,
-              gap_description: `Learning ${foundNode.concept}`,
-              youtube_query: `${foundNode.concept} tutorial explained`,
-              timestamp_hint: 'core explanation',
-            })
-            if (snippetRes.data.snippet) setSnippet(snippetRes.data.snippet)
-          } catch {
-            // Video is optional
+          setSnippetLoading(true)
+          const queries = [
+            `${foundNode.concept} tutorial explained`,
+            `${foundNode.concept} for beginners`,
+            foundNode.concept,
+          ]
+          for (const query of queries) {
+            try {
+              const snippetRes = await api.post('/youtube/snippet', {
+                concept: foundNode.concept,
+                gap_description: `Learning ${foundNode.concept}`,
+                youtube_query: query,
+                timestamp_hint: 'core explanation',
+              })
+              if (snippetRes.data.snippet) {
+                setSnippet(snippetRes.data.snippet)
+                break
+              }
+            } catch {
+              // Try next query
+            }
           }
+          setSnippetLoading(false)
         }
       } catch (err) {
         console.error('Failed to load concept:', err)
@@ -199,10 +215,17 @@ export function ConceptPage() {
                   )}
                 </div>
               </div>
+            ) : snippetLoading ? (
+              <div className="rounded-2xl border border-white/10 bg-cogni-card/20 aspect-video flex flex-col items-center justify-center">
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
+                  <Loader2 size={32} className="text-cogni-teal" />
+                </motion.div>
+                <p className="text-white/30 text-sm mt-3">Finding the best video...</p>
+              </div>
             ) : (
               <div className="rounded-2xl border border-white/10 bg-cogni-card/20 aspect-video flex flex-col items-center justify-center">
                 <Play size={48} className="text-white/10 mb-3" />
-                <p className="text-white/30 text-sm">No video available for this concept</p>
+                <p className="text-white/30 text-sm">No video found — YouTube quota may be exhausted</p>
               </div>
             )}
           </div>
@@ -213,6 +236,22 @@ export function ConceptPage() {
               <div className="flex items-center gap-2 mb-3">
                 <Sparkles size={16} className="text-cogni-accent" />
                 <h2 className="font-display font-bold text-cogni-accent">AI Explanation</h2>
+                <button
+                  type="button"
+                  onClick={() => (ttsExplanation.isSpeaking ? ttsExplanation.stop() : ttsExplanation.speak(explanation.explanation))}
+                  disabled={ttsExplanation.isLoading}
+                  className="ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-white/5 hover:bg-white/10 text-white/70 hover:text-white transition-colors disabled:opacity-50"
+                  title={ttsExplanation.isSpeaking ? 'Stop' : 'Listen'}
+                >
+                  {ttsExplanation.isLoading ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : ttsExplanation.isSpeaking ? (
+                    <VolumeX size={14} />
+                  ) : (
+                    <Volume2 size={14} />
+                  )}
+                  {ttsExplanation.isLoading ? 'Loading...' : ttsExplanation.isSpeaking ? 'Stop' : 'Listen'}
+                </button>
               </div>
               <div className="p-5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-4">
                 <p className="text-sm text-white/70 leading-relaxed whitespace-pre-line">
@@ -235,7 +274,25 @@ export function ConceptPage() {
 
                 {explanation.real_world_example && (
                   <div className="p-4 rounded-xl bg-cogni-accent/5 border border-cogni-accent/10">
-                    <p className="text-xs font-bold text-cogni-accent mb-1 uppercase tracking-wider">Real World Example</p>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <p className="text-xs font-bold text-cogni-accent uppercase tracking-wider">Real World Example</p>
+                      <button
+                        type="button"
+                        onClick={() => (ttsExample.isSpeaking ? ttsExample.stop() : ttsExample.speak(explanation.real_world_example))}
+                        disabled={ttsExample.isLoading}
+                        className="flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors disabled:opacity-50"
+                        title={ttsExample.isSpeaking ? 'Stop' : 'Listen'}
+                      >
+                        {ttsExample.isLoading ? (
+                          <Loader2 size={12} className="animate-spin" />
+                        ) : ttsExample.isSpeaking ? (
+                          <VolumeX size={12} />
+                        ) : (
+                          <Volume2 size={12} />
+                        )}
+                        {ttsExample.isLoading ? '...' : ttsExample.isSpeaking ? 'Stop' : 'Listen'}
+                      </button>
+                    </div>
                     <p className="text-sm text-white/60">{explanation.real_world_example}</p>
                   </div>
                 )}

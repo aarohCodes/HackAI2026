@@ -2,16 +2,20 @@ import os
 import json
 import traceback
 from datetime import datetime
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Load .env from project root (parent of backend/) so it works when running from backend/ or root
+_env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(_env_path)
+load_dotenv()  # still allow cwd .env to override
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from database.connection import connect_db, close_db
-from api import auth, users, graph, gemini, youtube, assess, search, calendar
+from api import auth, users, graph, gemini, youtube, assess, search, calendar, speech
 # from api import decay, gamification  # commented out — secondary features
 
 # #region agent log
@@ -51,9 +55,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
+ngrok_url = os.getenv("NGROK_URL", "")
+if ngrok_url:
+    cors_origins.append(ngrok_url.rstrip("/"))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:5173").split(","),
+    allow_origins=cors_origins,
+    allow_origin_regex=r"https://.*\.ngrok-free\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -69,6 +79,7 @@ app.include_router(youtube.router, prefix="/api/youtube", tags=["youtube"])
 app.include_router(assess.router, prefix="/api/assess", tags=["assessment"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])
+app.include_router(speech.router, prefix="/api/speech", tags=["speech"])
 
 
 @app.exception_handler(Exception)
