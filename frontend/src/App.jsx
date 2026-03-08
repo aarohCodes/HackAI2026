@@ -31,7 +31,7 @@ export default function App() {
   if (!authReady) return <LoadingScreen />
 
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
         <Route path="/" element={<CanvasPage />} />
         <Route path="/canvas" element={<CanvasPage />} />

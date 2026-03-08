@@ -25,16 +25,10 @@ app = FastAPI(
 )
 
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",")
-ngrok_url = os.getenv("NGROK_URL", "")
-if ngrok_url:
-    cors_origins.append(ngrok_url)
-# Always allow ngrok free-tier domains
-cors_origins.append("https://*.ngrok-free.app")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_origin_regex=r"https://.*\.ngrok-free\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
