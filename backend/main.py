@@ -1,13 +1,14 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-from database.connection import connect_db, close_db
-from api import auth, users, graph, gemini, youtube, assess, search
-# from api import decay, gamification  # commented out — secondary features
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+from database.connection import connect_db, close_db
+from api import auth, users, graph, gemini, youtube, assess, search, calendar
+# from api import decay, gamification  # commented out — secondary features
 
 
 @asynccontextmanager
@@ -41,6 +42,7 @@ app.include_router(youtube.router, prefix="/api/youtube", tags=["youtube"])
 # app.include_router(gamification.router, prefix="/api/gamification", tags=["gamification"])
 app.include_router(assess.router, prefix="/api/assess", tags=["assessment"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
+app.include_router(calendar.router, prefix="/api/calendar", tags=["calendar"])
 
 
 @app.get("/api/health")

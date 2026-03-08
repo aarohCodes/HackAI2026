@@ -9,6 +9,7 @@ import { Login } from './pages/Login'
 import { Onboarding } from './pages/Onboarding'
 import { HubsPage } from './pages/Hubs'
 import { DashboardPage } from './pages/Dashboard'
+import { PlannerPage } from './pages/Planner'
 import { motion } from 'framer-motion'
 import { Brain } from 'lucide-react'
 
@@ -55,6 +56,7 @@ export default function App() {
         <Route path="/hubs" element={<RequireAuth><HubsPage /></RequireAuth>} />
         <Route path="/canvas" element={<RequireAuth><CanvasPage /></RequireAuth>} />
         <Route path="/learn/:nodeId" element={<RequireAuth><ConceptPage /></RequireAuth>} />
+        <Route path="/planner" element={<RequireAuth><PlannerPage /></RequireAuth>} />
         <Route path="/assess/quiz" element={<RequireAuth><QuizPage /></RequireAuth>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

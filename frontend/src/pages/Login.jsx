@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { useStore } from '../store/useStore'
 import { api, setAuthToken, storeUser } from '../api/client'
 import { Sparkles, LogIn, UserPlus, Mail, Lock, User } from 'lucide-react'
+import { GoogleSignIn } from '../components/auth/GoogleSignIn'
 
 export function Login() {
   const navigate = useNavigate()
@@ -153,6 +154,15 @@ export function Login() {
               </>
             )}
           </button>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3 py-1">
+            <div className="flex-1 h-px bg-white/10" />
+            <span className="text-xs text-white/30 uppercase tracking-wider">or</span>
+            <div className="flex-1 h-px bg-white/10" />
+          </div>
+
+          <GoogleSignIn onError={(msg) => setError(msg)} />
 
           <div className="text-center pt-2">
             <button

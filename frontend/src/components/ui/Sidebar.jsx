@@ -2,7 +2,7 @@ import { useStore } from '../../store/useStore'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  Brain, ChevronLeft, ChevronRight, Network, LayoutGrid, LayoutDashboard, LogOut,
+  Brain, ChevronLeft, ChevronRight, Network, LayoutGrid, LayoutDashboard, CalendarDays, LogOut,
 } from 'lucide-react'
 
 export function Sidebar() {
@@ -18,6 +18,7 @@ export function Sidebar() {
   const isDashboardActive = location.pathname === '/dashboard'
   const isCanvasActive = location.pathname === '/' || location.pathname === '/canvas'
   const isHubsActive = location.pathname === '/hubs'
+  const isPlannerActive = location.pathname === '/planner'
 
   return (
     <motion.aside
@@ -93,6 +94,22 @@ export function Sidebar() {
           {sidebarOpen && (
             <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
               Hubs
+            </motion.span>
+          )}
+        </button>
+        <button
+          onClick={() => navigate('/planner')}
+          className={`
+            w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 cursor-pointer
+            ${isPlannerActive
+              ? 'text-white bg-cogni-accent/20 border border-cogni-accent/30'
+              : 'text-white/50 hover:text-white hover:bg-white/5 border border-transparent'}
+          `}
+        >
+          <CalendarDays size={20} className="flex-shrink-0" />
+          {sidebarOpen && (
+            <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              Planner
             </motion.span>
           )}
         </button>
