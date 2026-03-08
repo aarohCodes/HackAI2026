@@ -42,19 +42,31 @@ export function ConceptPage() {
         const detailRes = await api.get(`/graph/node/${nodeId}/detail`)
         setNodeDetail(detailRes.data)
 
-        // Load video snippet
+        // Load video snippet (mandatory — retry with broader queries if needed)
         if (foundNode) {
-          try {
-            const snippetRes = await api.post('/youtube/snippet', {
-              concept: foundNode.concept,
-              gap_description: `Learning ${foundNode.concept}`,
-              youtube_query: `${foundNode.concept} tutorial explained`,
-              timestamp_hint: 'core explanation',
-            })
-            if (snippetRes.data.snippet) setSnippet(snippetRes.data.snippet)
-          } catch {
-            // Video is optional
+          setSnippetLoading(true)
+          const queries = [
+            `${foundNode.concept} tutorial explained`,
+            `${foundNode.concept} for beginners`,
+            foundNode.concept,
+          ]
+          for (const query of queries) {
+            try {
+              const snippetRes = await api.post('/youtube/snippet', {
+                concept: foundNode.concept,
+                gap_description: `Learning ${foundNode.concept}`,
+                youtube_query: query,
+                timestamp_hint: 'core explanation',
+              })
+              if (snippetRes.data.snippet) {
+                setSnippet(snippetRes.data.snippet)
+                break
+              }
+            } catch {
+              // Try next query
+            }
           }
+          setSnippetLoading(false)
         }
       } catch (err) {
         console.error('Failed to load concept:', err)
@@ -204,10 +216,17 @@ export function ConceptPage() {
                   )}
                 </div>
               </div>
+            ) : snippetLoading ? (
+              <div className="rounded-2xl border border-white/10 bg-cogni-card/20 aspect-video flex flex-col items-center justify-center">
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}>
+                  <Loader2 size={32} className="text-cogni-teal" />
+                </motion.div>
+                <p className="text-white/30 text-sm mt-3">Finding the best video...</p>
+              </div>
             ) : (
               <div className="rounded-2xl border border-white/10 bg-cogni-card/20 aspect-video flex flex-col items-center justify-center">
                 <Play size={48} className="text-white/10 mb-3" />
-                <p className="text-white/30 text-sm">No video available for this concept</p>
+                <p className="text-white/30 text-sm">No video found — YouTube quota may be exhausted</p>
               </div>
             )}
           </div>

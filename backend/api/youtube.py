@@ -26,19 +26,29 @@ async def get_youtube_snippet(req: SnippetRequest, current_user: User = Depends(
         timestamp_hint=req.timestamp_hint,
     )
 
-    # Fallback: if find_snippet failed (e.g. no transcripts), just return the top search result
+    # Fallback chain: try progressively broader queries until a video is found
     if result is None:
         from services.youtube_service import search_videos
-        videos = search_videos(req.youtube_query, max_results=1)
-        if videos:
-            v = videos[0]
-            result = {
-                "video_id": v["video_id"],
-                "title": v["title"],
-                "start_seconds": 0,
-                "end_seconds": 0,
-                "snippet_reason": f"Top result for '{req.concept}' — full video recommended.",
-            }
+
+        fallback_queries = [
+            req.youtube_query,
+            f"{req.concept} tutorial explained",
+            f"{req.concept} for beginners",
+            req.concept,
+        ]
+
+        for query in fallback_queries:
+            videos = search_videos(query, max_results=1)
+            if videos:
+                v = videos[0]
+                result = {
+                    "video_id": v["video_id"],
+                    "title": v["title"],
+                    "start_seconds": 0,
+                    "end_seconds": 0,
+                    "snippet_reason": f"Top result for '{req.concept}' — full video recommended.",
+                }
+                break
 
     if result is None:
         return {"snippet": None, "message": "No snippet available"}
